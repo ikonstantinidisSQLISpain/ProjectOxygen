@@ -1,0 +1,26 @@
+# The main pipeline for whoz_ingestion
+
+resources:
+  pipelines:
+    whoz_ingestion_etl:
+      name: whoz_ingestion_etl
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      root_path: "../src/whoz_ingestion_etl"
+
+      libraries:
+        - glob:
+            include: ../src/whoz_ingestion_etl/transformations/**
+
+      # Landing location of the Whoz export. Read by bronze_whoz_profiles.py through
+      # spark.conf.get, so it can be changed here without touching the transformation.
+      configuration:
+        whoz.profiles.source_path: /Volumes/main/landing/whoz/profiles/
+        whoz.profiles.schema_path: /Volumes/main/landing/whoz/_schema/profiles
+
+      environment:
+        dependencies:
+          # We include every dependency defined by pyproject.toml by defining an editable environment
+          # that points to the folder where pyproject.toml is deployed.
+          - --editable ${workspace.file_path}
