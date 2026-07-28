@@ -6,7 +6,7 @@ on:
   push:
     branches: [dev, main]
     paths:
-      - "whoz_ingestion/**"
+      - "oxygen_medallion_pipeline/**"
       - ".github/workflows/databricks-cd.yml"
 
 # Never run two deploys to the same environment at once; queue instead of cancel.
@@ -22,7 +22,7 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
     defaults:
       run:
-        working-directory: whoz_ingestion
+        working-directory: oxygen_medallion_pipeline
     steps:
       - name: Checkout
         uses: actions/checkout@v4

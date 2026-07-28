@@ -1,14 +1,25 @@
-# whoz_ingestion
+# oxygen_medallion_pipeline
 
-Databricks asset bundle that ingests the Whoz profile export into Unity Catalog.
+Databricks asset bundle for Project Oxygen's medallion pipelines. One bundle, multiple
+sources: each source is a self-contained pipeline + refresh job under `resources/` and
+`src/`, sharing this bundle's targets, catalog variables, permissions, and CI/CD.
+
+Sources today:
+
+* **Whoz** — profile export ingestion. See "The Whoz profile pipeline" below.
+
+To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>.job.yml`
+(picked up automatically by `databricks.yml`'s `include: resources/*.yml`) and a
+`src/<source>_etl/` folder alongside `whoz_ingestion_etl/`. No new bundle, no new
+`databricks.yml`.
 
 * `src/`: Python source code for this project.
-  * `src/whoz_ingestion/`: Shared Python code that can be used by jobs and pipelines.
+  * `src/whoz_ingestion/`: Shared Python code for the Whoz source, used by its jobs/pipelines.
   * `src/whoz_ingestion_etl/transformations/`: the `@dp.table`-decorated bronze/silver
     dataset definitions of the `whoz_ingestion_etl` pipeline.
   * `src/whoz_ingestion_etl/utilities/`: the pure DataFrame-in/DataFrame-out shaping
     logic those datasets call — kept separate so it's unit-testable, see Testing below.
-* `resources/`:  Resource configurations (jobs, pipelines, etc.)
+* `resources/`:  Resource configurations (jobs, pipelines, etc.), one pair per source.
 * `docs/`: Source data model analysis — see `docs/whoz_profile_data_model.md`.
 * `tests/`: Unit tests for the shared Python code.
 * `fixtures/`: Fixtures for data sets (primarily used for testing).

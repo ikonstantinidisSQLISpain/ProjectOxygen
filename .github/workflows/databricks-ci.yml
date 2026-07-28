@@ -8,7 +8,7 @@ on:
   pull_request:
     branches: [dev, main]
     paths:
-      - "whoz_ingestion/**"
+      - "oxygen_medallion_pipeline/**"
       - ".github/workflows/databricks-ci.yml"
 
 # One validation per PR; a new push cancels the previous run.
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: whoz_ingestion
+        working-directory: oxygen_medallion_pipeline
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: whoz_ingestion
+        working-directory: oxygen_medallion_pipeline
     steps:
       - name: Checkout
         uses: actions/checkout@v4

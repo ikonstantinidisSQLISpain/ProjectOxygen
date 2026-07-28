@@ -1,7 +1,14 @@
-# This is a Databricks asset bundle definition for whoz_ingestion.
+# This is the Databricks asset bundle for Project Oxygen's medallion pipelines.
 # See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+#
+# One bundle, multiple pipelines: each source gets its own resources/*.pipeline.yml
+# + resources/*.job.yml (picked up automatically by the include glob below) and its
+# own src/<source>_etl/ folder, sharing these targets/variables/permissions. Today
+# that's just Whoz (resources/whoz_ingestion_etl.pipeline.yml); more sources land the
+# same way, not as separate bundles.
 bundle:
-  name: whoz_ingestion
+  name: oxygen_medallion_pipeline
+  # Stable identity for this bundle's deploy state — do not regenerate on rename.
   uuid: 46e5b176-ed17-4115-8ec5-9b7b0fd69053
 
 include:

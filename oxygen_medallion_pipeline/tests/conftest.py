@@ -35,7 +35,7 @@ def spark() -> SparkSession:
             df = spark.createDataFrame([(1,)], ["x"])
             assert df.count() == 1
     """
-    session = SparkSession.builder.appName("whoz_ingestion-tests").master("local[2]").getOrCreate()
+    session = SparkSession.builder.appName("oxygen_medallion_pipeline-tests").master("local[2]").getOrCreate()
     yield session
     session.stop()
 
