@@ -1,0 +1,86 @@
+erDiagram
+    bu {
+        BIGINT id
+        STRING name
+        STRING type
+        STRING symbole
+        BOOL active
+        STRING calendar
+        BIGINT society_id
+        BIGINT entity_id
+        CHECK manager
+    }
+
+    society {
+        BIGINT id
+        STRING name
+        BOOL active
+    }
+
+    entity {
+        BIGINT id
+        STRING name
+        BOOL active
+        CHECK manager
+    }
+
+    department {
+        BIGINT id
+        STRING code
+        BOOL active
+        STRING name
+        CHECK associated_zone: FK multi
+        CHECK associated_service_line: FK multi
+    }
+
+    service_line {
+        BIGINT id
+        STRING code
+        BOOL active
+        STRING name
+        CHECK associated_zone
+        CHECK assoicated_practice_list
+    }
+
+    site {
+        BIGINT id
+        BOOL active
+        STRING name
+    }
+
+    timesheet_report { % Cada fila es 
+        BIGINT id
+        INT year
+        SMALLINT month
+        STRING worker_id (uid)
+
+    }
+
+    activity {
+        BIGINT id
+        STRING type
+        STRING code
+        STRING type_lib
+    }
+
+    worker {
+        BIGINT id
+        BOOL active
+        STRING mail
+        STRING start_date
+        STRING seniority_date
+        STRING job_title
+        STRING productivity_coefficient
+        STRING fulltime_or_parttime
+        CHECK std_cost
+        CHECK gcm
+        CHECK tariff
+        CHECK skill
+        CHECK position
+        CHECK employee_category
+        STRING site_id
+        STRING bu_id
+        STRING service_line_department_id
+        STRING direct_manager_id
+    }
+

@@ -1,0 +1,5 @@
+bundle:
+  name: Project_Oxygen
+variables:
+  catalog:
+    default: oxygen_dev
