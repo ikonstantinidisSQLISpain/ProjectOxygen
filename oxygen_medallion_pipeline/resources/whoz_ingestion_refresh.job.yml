@@ -15,12 +15,9 @@ resources:
       #  on_failure:
       #    - your_email@example.com
 
-      parameters:
-        - name: catalog
-          default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
-
+      # No job parameters: the sole task below triggers whoz_ingestion_etl by pipeline
+      # ID, which already carries its own catalog/schema config from databricks.yml —
+      # nothing here consumes job-level parameters.
       tasks:
         - task_key: refresh_pipeline
           pipeline_task:

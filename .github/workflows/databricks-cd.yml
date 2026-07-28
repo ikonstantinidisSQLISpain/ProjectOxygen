@@ -1,10 +1,11 @@
 name: CD - Deploy bundle
 
 # Deploys the bundle when commits land on an environment branch (i.e. when a PR
-# is merged). Pushes to dev deploy the dev target; pushes to main deploy prod.
+# is merged). Pushes to dev/test/main deploy the matching target. (No "local"
+# here — that's personal-only, deployed straight from a developer's terminal.)
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, test, main]
     paths:
       - "oxygen_medallion_pipeline/**"
       - ".github/workflows/databricks-cd.yml"
@@ -19,7 +20,7 @@ jobs:
     name: Deploy bundle
     runs-on: ubuntu-latest
     # GitHub Environment: lets you add required reviewers / protection on prod.
-    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    environment: ${{ github.ref_name == 'main' && 'prod' || (github.ref_name == 'test' && 'test' || 'dev') }}
     defaults:
       run:
         working-directory: oxygen_medallion_pipeline
@@ -35,6 +36,8 @@ jobs:
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "name=prod" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "test" ]; then
+            echo "name=test" >> "$GITHUB_OUTPUT"
           else
             echo "name=dev" >> "$GITHUB_OUTPUT"
           fi

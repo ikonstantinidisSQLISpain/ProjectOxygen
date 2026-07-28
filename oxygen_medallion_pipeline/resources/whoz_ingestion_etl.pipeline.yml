@@ -5,7 +5,10 @@ resources:
     whoz_ingestion_etl:
       name: whoz_ingestion_etl
       catalog: ${var.catalog}
-      schema: ${var.schema}
+      # Fallback only — every table gets its own explicit bronze./silver.-qualified
+      # name in the Python source (see silver_whoz_profile.py etc), so this rarely
+      # actually applies to anything.
+      schema: ${var.bronze_schema}
       serverless: true
       root_path: "../src/whoz_ingestion_etl"
 

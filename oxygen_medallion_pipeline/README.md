@@ -40,11 +40,11 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 | silver | `silver.whoz_position_aptitude_refs` | (position, aptitude) bridge |
 | silver | `silver.whoz_profile_skill_ratings` | legacy `skillRatings` — verify before use |
 
-Schema names are literal only in prod. In dev, `bronze`/`silver` both resolve to your
-own personal schema (`${workspace.current_user.short_name}`) — see `bronze_schema` /
-`silver_schema` in `databricks.yml`. Every table name in `transformations/*.py` is
-built from `CATALOG`/`BRONZE_SCHEMA`/`SILVER_SCHEMA` module-level constants (read from
-pipeline config via `spark.conf.get`), never hardcoded.
+`bronze`/`silver` schema names are literal and identical in **every** target — the
+isolation boundary is the catalog, not the schema (see "Environments" below). Every
+table name in `transformations/*.py` is built from `CATALOG`/`BRONZE_SCHEMA`/
+`SILVER_SCHEMA` module-level constants (read from pipeline config via `spark.conf.get`),
+never hardcoded.
 
 The export is a pretty-printed JSON **array**, not JSONL, and it is polymorphic in
 several fields, so bronze reads it with `multiLine` + `singleVariantColumn` and silver
@@ -79,38 +79,59 @@ If you're developing with an IDE, dependencies for this project should be instal
 
 # Using this project using the CLI
 
-The Databricks workspace and IDE extensions provide a graphical interface for working
-with this project. It's also possible to interact with it directly using the CLI:
+## Environments
+
+Four bundle targets, each pointed at its own catalog — `bronze`/`silver` schema names
+are identical across all of them, so nothing about the pipeline's structure changes
+between environments, only where it writes:
+
+| Target | Catalog | Who deploys it, and how |
+|---|---|---|
+| `local` (default) | `oxygen_dev_<your-username>` | You, from your own terminal — personal, fully isolated, never touched by CI |
+| `dev` | `oxygen_dev` | CI, on push to the `dev` branch (i.e. when a PR merges into it) |
+| `test` | `oxygen_test` | CI, on push to the `test` branch |
+| `prod` | `oxygen_prod` | CI, on push to the `main` branch |
+
+**One-time setup, before your first local deploy:** your personal catalog needs to
+exist first — a pipeline deploy can create schemas inside a catalog automatically, but
+not the catalog itself. Create yours once:
+```
+$ databricks catalogs create oxygen_dev_<your-username> \
+    --storage-root "abfss://oxygen-source@dbxpocstor3f4h.dfs.core.windows.net/"
+```
+(same storage account/container `oxygen_dev` itself already uses — no new cloud infra
+needed). Replace `<your-username>` with your workspace short username (`ikonstantinidis`,
+`miguel`, etc.) — must match what `${workspace.current_user.short_name}` resolves to for
+you, since that's what `local`'s catalog variable is built from.
+
+## Day to day
 
 1. Authenticate to your Databricks workspace, if you have not done so already:
     ```
     $ databricks configure
     ```
 
-2. To deploy a development copy of this project, type:
+2. Deploy to your own sandbox — no `--target` needed, `local` is the default:
     ```
-    $ databricks bundle deploy --target dev
+    $ databricks bundle deploy
     ```
-    (Note that "dev" is the default target, so the `--target` parameter
-    is optional here.)
+    This deploys a pipeline named `[dev yourname] whoz_ingestion_etl`, writing only
+    into your own `oxygen_dev_<you>` catalog. Find it under **Jobs & Pipelines** in the
+    workspace.
 
-    This deploys everything that's defined for this project, including a pipeline
-    called `[dev yourname] whoz_ingestion_etl`.
-    You can find that resource by opening your workpace and clicking on **Jobs & Pipelines**.
-
-3. Similarly, to deploy a production copy, type:
-   ```
-   $ databricks bundle deploy --target prod
-   ```
-   The `whoz_ingestion_refresh` job runs the pipeline every day
-   (defined in resources/whoz_ingestion_refresh.job.yml). The schedule
-   is paused when deploying in development mode (see
-   https://docs.databricks.com/dev-tools/bundles/deployment-modes.html).
-
-4. To run a job or pipeline, use the "run" command:
+3. Run it to actually exercise your changes:
    ```
    $ databricks bundle run
    ```
+
+4. When ready, push a branch and open a PR into `dev`. `databricks-ci.yml` validates
+   against the `dev` target; merging triggers `databricks-cd.yml` to deploy the shared
+   `oxygen_dev` catalog. Promote the same way, `dev` → `test` → `main`, to reach
+   `oxygen_test` and finally `oxygen_prod`.
+
+   The `whoz_ingestion_refresh` job runs the pipeline daily in whichever target it's
+   deployed to (`resources/whoz_ingestion_refresh.job.yml`) — paused in `local`/`dev`/
+   `test` (all three stay in `mode: development`), running for real only in `prod`.
 
 5. Finally, to run tests locally, use `pytest`:
    ```
@@ -154,15 +175,17 @@ table) is the natural next step whenever they need a test.
 
 ## CI/CD
 
-Two environment branches, `dev` and `main`, drive two workflows:
+Three environment branches — `dev`, `test`, `main` — drive two workflows. (`local` has
+no branch; it's never touched by CI, see Environments above.)
 
 | Branch | Bundle target | PR into it (`.github/workflows/databricks-ci.yml`) | Push to it (`.github/workflows/databricks-cd.yml`) |
 |---|---|---|---|
 | `dev` | `dev` | validates the `dev` target + runs pytest | deploys `dev` |
+| `test` | `test` | validates the `test` target + runs pytest | deploys `test` |
 | `main` | `prod` | validates the `prod` target + runs pytest | deploys `prod`, gated by the `prod` GitHub Environment |
 
-`databricks bundle validate` needs a live authenticated call even for `dev` (it resolves
-`${workspace.current_user.short_name}`), so `validate` and `deploy` both authenticate as
-the `sp-oxygen-cicd` service principal over OAuth M2M, via three repo secrets:
-`DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`. `unit-tests` needs
-none of these — see Testing above.
+`databricks bundle validate`/`deploy` need a live authenticated CLI session against the
+target workspace regardless of target, so both authenticate as the `sp-oxygen-cicd`
+service principal over OAuth M2M, via three repo secrets: `DATABRICKS_HOST`,
+`DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`. `unit-tests` needs none of these —
+see Testing above.

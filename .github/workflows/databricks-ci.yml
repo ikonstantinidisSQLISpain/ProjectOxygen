@@ -3,10 +3,12 @@ name: CI - Validate & test
 # On every pull request into an environment branch, run two gates in parallel:
 #   - unit-tests: pytest over the pure transform logic (no Databricks needed)
 #   - validate:   `databricks bundle validate` against the matching target
-# A PR into dev validates the dev target; a PR into main validates prod.
+# A PR into dev validates the dev target, into test validates test, into main
+# validates prod. (There's no "local" target here — that one's personal-only,
+# deployed straight from a developer's terminal, never through CI.)
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, test, main]
     paths:
       - "oxygen_medallion_pipeline/**"
       - ".github/workflows/databricks-ci.yml"
@@ -60,6 +62,8 @@ jobs:
         run: |
           if [ "${{ github.base_ref }}" = "main" ]; then
             echo "name=prod" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.base_ref }}" = "test" ]; then
+            echo "name=test" >> "$GITHUB_OUTPUT"
           else
             echo "name=dev" >> "$GITHUB_OUTPUT"
           fi

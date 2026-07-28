@@ -14,38 +14,57 @@ bundle:
 include:
   - resources/*.yml
 
-# Variable declarations. These variables are assigned in the dev/prod targets below.
+# Variable declarations. These variables are assigned in the targets below. Catalog is
+# the environment/isolation boundary (one per target); bronze_schema/silver_schema are
+# literal "bronze"/"silver" in every target — see the four targets below.
 variables:
   catalog:
     description: The catalog to use
-  schema:
-    description: Default schema for the pipeline (used as a fallback; datasets are
-      schema-qualified per medallion layer via bronze_schema/silver_schema below)
   bronze_schema:
-    description: Schema for bronze (raw) tables
+    description: Schema for bronze (raw) tables — always "bronze"
   silver_schema:
-    description: Schema for silver (cleaned/conformed) tables
+    description: Schema for silver (cleaned/conformed) tables — always "silver"
 
 targets:
-  dev:
-    # The default target uses 'mode: development' to create a development copy.
+  local:
+    # What a bare `databricks bundle deploy` hits — one personal, fully isolated
+    # catalog per developer, never touched by CI. Requires oxygen_dev_<you> to
+    # already exist; see README.md for the one-time `databricks catalogs create`
+    # step. 'mode: development':
     # - Deployed resources get prefixed with '[dev my_user_name]'
     # - Any job schedules and triggers are paused by default.
     # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
-    #
-    # bronze_schema/silver_schema both collapse to the same per-user schema here —
-    # dev is a personal sandbox, so layer separation doesn't buy anything and would
-    # just mean two schemas to look through instead of one. It's real in prod, where
-    # access control is the point (see prod below).
     mode: development
     default: true
     workspace:
       host: https://adb-7405610661645830.10.azuredatabricks.net
     variables:
+      catalog: oxygen_dev_${workspace.current_user.short_name}
+      bronze_schema: bronze
+      silver_schema: silver
+  dev:
+    # Shared, CI-deployed environment (resources/whoz_ingestion_etl.pipeline.yml
+    # deploys here on push to the 'dev' branch — see .github/workflows/databricks-cd.yml).
+    # Not the default target: a bare local deploy must not be able to touch this by
+    # accident. Still 'mode: development' (paused schedules, [dev ...]-prefixed
+    # resource names) — deliberately kept simple rather than treated as a real
+    # always-on environment.
+    mode: development
+    workspace:
+      host: https://adb-7405610661645830.10.azuredatabricks.net
+    variables:
       catalog: oxygen_dev
-      schema: ${workspace.current_user.short_name}
-      bronze_schema: ${workspace.current_user.short_name}
-      silver_schema: ${workspace.current_user.short_name}
+      bronze_schema: bronze
+      silver_schema: silver
+  test:
+    # Same shape as dev, one tier up — deploys on push to the 'test' branch.
+    mode: development
+    workspace:
+      host: https://adb-7405610661645830.10.azuredatabricks.net
+    variables:
+      catalog: oxygen_test
+      bronze_schema: bronze
+      silver_schema: silver
   prod:
     mode: production
     workspace:
@@ -53,11 +72,10 @@ targets:
       # We explicitly deploy to /Workspace/Users/ikonstantinidis@sqli.com to make sure we only have a single copy.
       root_path: /Workspace/Users/ikonstantinidis@sqli.com/.bundle/${bundle.name}/${bundle.target}
     variables:
-      catalog: oxygen_dev
-      schema: prod
-      # Real separation: grant broad read on silver, restrict bronze (raw payloads,
-      # not fully anonymized — see docs/whoz_profile_data_model.md) to just the
-      # pipeline's own service principal and admins.
+      # Its own catalog, not shared with dev/test — real access-control separation
+      # is the point here (bronze holds raw payloads that aren't fully anonymized,
+      # see docs/whoz_profile_data_model.md).
+      catalog: oxygen_prod
       bronze_schema: bronze
       silver_schema: silver
     permissions:
