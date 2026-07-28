@@ -15,8 +15,11 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
-    "databricks-dlt",
-    "databricks-connect>=15.4,<15.5",
+    # Plain open-source PySpark, not databricks-connect: the two can't be installed
+    # together, and Spark 4.0 open-sourced the VARIANT type / try_variant_get /
+    # variant_explode that utilities/*.py needs, so a local session is enough to
+    # unit test it. Needs a local JDK 17+ on PATH (see README.md#testing).
+    "pyspark>=4.0,<5",
     "ipykernel",
 ]
 
@@ -26,3 +29,9 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
+
+[tool.pytest.ini_options]
+# src/whoz_ingestion_etl is deployed straight onto the pipeline's path by Lakeflow
+# (via resources/whoz_ingestion_etl.pipeline.yml's root_path/libraries.glob), not
+# installed as a package. This makes it importable for tests too.
+pythonpath = ["src"]

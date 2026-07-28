@@ -1,33 +1,43 @@
-"""This file configures pytest, initializes Databricks Connect, and provides fixtures for Spark and loading test data."""
+"""This file configures pytest and provides fixtures for a local Spark session and
+loading test data.
 
-import os, sys, pathlib
-from contextlib import contextmanager
+Tests run against plain open-source PySpark, not a live Databricks workspace: the
+logic under test (src/whoz_ingestion_etl/utilities/) only uses VARIANT / try_variant_get
+/ variant_explode, which Apache Spark 4.0 open-sourced from Databricks Runtime. This
+needs a local JDK (17+) on PATH but no Databricks credentials and no live cluster.
+"""
+
+import csv
+import json
+import os
+import pathlib
+import sys
+
+import pytest
+from pyspark.sql import SparkSession
+
+# The JVM spawns a Python worker process and needs to be told which interpreter to
+# use. Without this, on Windows in particular, it can't find a compatible one (PATH
+# doesn't have the venv's python.exe under `uv run`) and every query times out with
+# "Timed out while waiting for the Python worker to connect back". sys.executable is
+# always the interpreter currently running pytest, so this is correct in any venv, on
+# any OS, locally or in CI.
+os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 
 
-try:
-    from databricks.connect import DatabricksSession
-    from databricks.sdk import WorkspaceClient
-    from pyspark.sql import SparkSession
-    import pytest
-    import json
-    import csv
-    import os
-except ImportError:
-    raise ImportError(
-        "Test dependencies not found.\n\nRun tests using 'uv run pytest'. See http://docs.astral.sh/uv to learn more about uv."
-    )
-
-
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def spark() -> SparkSession:
-    """Provide a SparkSession fixture for tests.
+    """Provide a local SparkSession fixture for tests.
 
     Minimal example:
         def test_uses_spark(spark):
             df = spark.createDataFrame([(1,)], ["x"])
             assert df.count() == 1
     """
-    return DatabricksSession.builder.getOrCreate()
+    session = SparkSession.builder.appName("whoz_ingestion-tests").master("local[2]").getOrCreate()
+    yield session
+    session.stop()
 
 
 @pytest.fixture()
@@ -54,41 +64,3 @@ def load_fixture(spark: SparkSession):
         raise ValueError(f"Unsupported fixture type for: {filename}")
 
     return _loader
-
-
-def _enable_fallback_compute():
-    """Enable serverless compute if no compute is specified."""
-    conf = WorkspaceClient().config
-    if conf.serverless_compute_id or conf.cluster_id or os.environ.get("SPARK_REMOTE"):
-        return
-
-    url = "https://docs.databricks.com/dev-tools/databricks-connect/cluster-config"
-    print("☁️ no compute specified, falling back to serverless compute", file=sys.stderr)
-    print(f"  see {url} for manual configuration", file=sys.stdout)
-
-    os.environ["DATABRICKS_SERVERLESS_COMPUTE_ID"] = "auto"
-
-
-@contextmanager
-def _allow_stderr_output(config: pytest.Config):
-    """Temporarily disable pytest output capture."""
-    capman = config.pluginmanager.get_plugin("capturemanager")
-    if capman:
-        with capman.global_and_fixture_disabled():
-            yield
-    else:
-        yield
-
-
-def pytest_configure(config: pytest.Config):
-    """Configure pytest session."""
-    with _allow_stderr_output(config):
-        _enable_fallback_compute()
-
-        # Initialize Spark session eagerly, so it is available even when
-        # SparkSession.builder.getOrCreate() is used. For DB Connect 15+,
-        # we validate version compatibility with the remote cluster.
-        if hasattr(DatabricksSession.builder, "validateSession"):
-            DatabricksSession.builder.validateSession().getOrCreate()
-        else:
-            DatabricksSession.builder.getOrCreate()

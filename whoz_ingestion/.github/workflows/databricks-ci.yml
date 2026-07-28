@@ -1,0 +1,72 @@
+name: CI - Validate & test
+
+# On every pull request into an environment branch, run two gates in parallel:
+#   - unit-tests: pytest over the pure transform logic (no Databricks needed)
+#   - validate:   `databricks bundle validate` against the matching target
+# A PR into dev validates the dev target; a PR into main validates prod.
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "whoz_ingestion/**"
+      - ".github/workflows/databricks-ci.yml"
+
+# One validation per PR; a new push cancels the previous run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whoz_ingestion
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java (PySpark needs a JVM)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install test dependencies
+        run: uv sync --dev
+
+      - name: Run pytest
+        run: uv run pytest
+
+  validate:
+    name: Validate bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whoz_ingestion
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.9.0
+
+      - name: Select target from base branch
+        id: target
+        run: |
+          if [ "${{ github.base_ref }}" = "main" ]; then
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: databricks bundle validate -t ${{ steps.target.outputs.name }}

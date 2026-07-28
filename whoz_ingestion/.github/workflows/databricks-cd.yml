@@ -1,0 +1,47 @@
+name: CD - Deploy bundle
+
+# Deploys the bundle when commits land on an environment branch (i.e. when a PR
+# is merged). Pushes to dev deploy the dev target; pushes to main deploy prod.
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "whoz_ingestion/**"
+      - ".github/workflows/databricks-cd.yml"
+
+# Never run two deploys to the same environment at once; queue instead of cancel.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy bundle
+    runs-on: ubuntu-latest
+    # GitHub Environment: lets you add required reviewers / protection on prod.
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    defaults:
+      run:
+        working-directory: whoz_ingestion
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.9.0
+
+      - name: Select target from branch
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: databricks bundle deploy -t ${{ steps.target.outputs.name }}

@@ -4,8 +4,10 @@ Databricks asset bundle that ingests the Whoz profile export into Unity Catalog.
 
 * `src/`: Python source code for this project.
   * `src/whoz_ingestion/`: Shared Python code that can be used by jobs and pipelines.
-  * `src/whoz_ingestion_etl/transformations/`: the bronze/silver datasets of the
-    `whoz_ingestion_etl` pipeline.
+  * `src/whoz_ingestion_etl/transformations/`: the `@dp.table`-decorated bronze/silver
+    dataset definitions of the `whoz_ingestion_etl` pipeline.
+  * `src/whoz_ingestion_etl/utilities/`: the pure DataFrame-in/DataFrame-out shaping
+    logic those datasets call — kept separate so it's unit-testable, see Testing below.
 * `resources/`:  Resource configurations (jobs, pipelines, etc.)
 * `docs/`: Source data model analysis — see `docs/whoz_profile_data_model.md`.
 * `tests/`: Unit tests for the shared Python code.
@@ -52,6 +54,8 @@ If you're developing with an IDE, dependencies for this project should be instal
 
 *  Make sure you have the UV package manager installed.
    It's an alternative to tools like pip: https://docs.astral.sh/uv/getting-started/installation/.
+*  Make sure you have a JDK 17+ installed and on `PATH` (`java -version`) — PySpark
+   needs it to run tests locally, see Testing below.
 *  Run `uv sync --dev` to install the project's dependencies.
 
 
@@ -94,3 +98,52 @@ with this project. It's also possible to interact with it directly using the CLI
    ```
    $ uv run pytest
    ```
+
+## Testing
+
+Tests run against a **local, open-source PySpark session** — no Databricks workspace,
+no credentials, no live cluster. `tests/conftest.py` starts a plain `SparkSession` in
+local mode. This works because Apache Spark 4.0 open-sourced the `VARIANT` type,
+`try_variant_get` and `variant_explode` from Databricks Runtime, and that's all the
+tested logic uses. You need a local JDK 17+ on `PATH` (PySpark embeds a JVM); nothing
+else.
+
+**Why the transformations aren't tested directly.** `pyspark.pipelines` (imported as
+`dp` in every file under `transformations/`) only exists inside a running Lakeflow
+pipeline — importing a `transformations/*.py` file from a plain pytest process raises
+`ImportError: cannot import name 'pipelines' from 'pyspark'`. So the actual row-shaping
+logic (the `.select(...)` / `try_variant_get` calls) lives in `utilities/`, which has no
+`pipelines` dependency at all and takes/returns plain DataFrames. Each `@dp.table`
+function in `transformations/` is a thin wrapper: read the upstream table, call the
+`utilities` function, return the result. Test the `utilities` function; don't try to
+call the `@dp.table` function.
+
+**How to build test input.** Build the whole DataFrame in one
+`spark.createDataFrame(...).select(...)` call — see `_bronze_df` in
+`tests/test_silver_whoz_profile.py`. Do not build rows one at a time via `.first()` and
+reassemble them into a list of `Row`s: round-tripping a `VARIANT` value through a local
+`Row` loses its type, and Spark re-infers it as the physical
+`STRUCT<metadata: BINARY, value: BINARY>` layout instead — `try_variant_get` then fails
+with `DATATYPE_MISMATCH` even though the JSON is fine.
+
+**What's covered vs. not, today.** `test_silver_whoz_profile.py` covers `whoz_profile`
+only, against the type hazards documented in `docs/whoz_profile_data_model.md`
+(int/float `completionRate`, absent-vs-null `headline`). The other tables in
+`transformations/` don't have a `utilities` counterpart yet — extending the pattern
+(pulling their `.select(...)` / `spark.sql(...)` bodies into `utilities/`, one module per
+table) is the natural next step whenever they need a test.
+
+## CI/CD
+
+Two environment branches, `dev` and `main`, drive two workflows:
+
+| Branch | Bundle target | PR into it (`.github/workflows/databricks-ci.yml`) | Push to it (`.github/workflows/databricks-cd.yml`) |
+|---|---|---|---|
+| `dev` | `dev` | validates the `dev` target + runs pytest | deploys `dev` |
+| `main` | `prod` | validates the `prod` target + runs pytest | deploys `prod`, gated by the `prod` GitHub Environment |
+
+`databricks bundle validate` needs a live authenticated call even for `dev` (it resolves
+`${workspace.current_user.short_name}`), so `validate` and `deploy` both authenticate as
+the `sp-oxygen-cicd` service principal over OAuth M2M, via three repo secrets:
+`DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`. `unit-tests` needs
+none of these — see Testing above.
