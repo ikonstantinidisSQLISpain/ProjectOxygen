@@ -19,7 +19,12 @@ variables:
   catalog:
     description: The catalog to use
   schema:
-    description: The schema to use
+    description: Default schema for the pipeline (used as a fallback; datasets are
+      schema-qualified per medallion layer via bronze_schema/silver_schema below)
+  bronze_schema:
+    description: Schema for bronze (raw) tables
+  silver_schema:
+    description: Schema for silver (cleaned/conformed) tables
 
 targets:
   dev:
@@ -27,6 +32,11 @@ targets:
     # - Deployed resources get prefixed with '[dev my_user_name]'
     # - Any job schedules and triggers are paused by default.
     # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
+    #
+    # bronze_schema/silver_schema both collapse to the same per-user schema here —
+    # dev is a personal sandbox, so layer separation doesn't buy anything and would
+    # just mean two schemas to look through instead of one. It's real in prod, where
+    # access control is the point (see prod below).
     mode: development
     default: true
     workspace:
@@ -34,6 +44,8 @@ targets:
     variables:
       catalog: oxygen_dev
       schema: ${workspace.current_user.short_name}
+      bronze_schema: ${workspace.current_user.short_name}
+      silver_schema: ${workspace.current_user.short_name}
   prod:
     mode: production
     workspace:
@@ -43,6 +55,11 @@ targets:
     variables:
       catalog: oxygen_dev
       schema: prod
+      # Real separation: grant broad read on silver, restrict bronze (raw payloads,
+      # not fully anonymized — see docs/whoz_profile_data_model.md) to just the
+      # pipeline's own service principal and admins.
+      bronze_schema: bronze
+      silver_schema: silver
     permissions:
       - user_name: ikonstantinidis@sqli.com
         level: CAN_MANAGE

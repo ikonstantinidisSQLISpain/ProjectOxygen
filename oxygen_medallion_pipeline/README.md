@@ -30,14 +30,21 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 
 | Layer  | Table | Grain |
 |---|---|---|
-| bronze | `whoz_profiles_bronze` | one row per profile, full JSON in a VARIANT `payload` |
-| bronze | `whoz_profiles_payload_shapes` | one row per distinct top-level key set (drift monitor) |
-| silver | `whoz_profile` | one row per profile |
-| silver | `whoz_profile_completion_rule` | (profile, completion rule) |
-| silver | `whoz_profile_aptitude` | one row per declared skill |
-| silver | `whoz_profile_position` | one row per job/mission |
-| silver | `whoz_position_aptitude_ref` | (position, aptitude) bridge |
-| silver | `whoz_profile_skill_rating` | legacy `skillRatings` — verify before use |
+| bronze | `bronze.whoz_profiles` | one row per profile, full JSON in a VARIANT `payload` |
+| bronze | `bronze.whoz_profiles_payload_shapes` | one row per distinct top-level key set (drift monitor) |
+| silver | `silver.whoz_profiles` | one row per profile, **current state only** — AUTO CDC (SCD1) upsert by `profile_id` |
+| silver | `silver.whoz_profile_history` | one row per (profile, version), `__START_AT`/`__END_AT` validity — AUTO CDC (SCD2), full history |
+| silver | `silver.whoz_profile_completion_rules` | (profile, completion rule) |
+| silver | `silver.whoz_profile_aptitudes` | one row per declared skill |
+| silver | `silver.whoz_profile_positions` | one row per job/mission |
+| silver | `silver.whoz_position_aptitude_refs` | (position, aptitude) bridge |
+| silver | `silver.whoz_profile_skill_ratings` | legacy `skillRatings` — verify before use |
+
+Schema names are literal only in prod. In dev, `bronze`/`silver` both resolve to your
+own personal schema (`${workspace.current_user.short_name}`) — see `bronze_schema` /
+`silver_schema` in `databricks.yml`. Every table name in `transformations/*.py` is
+built from `CATALOG`/`BRONZE_SCHEMA`/`SILVER_SCHEMA` module-level constants (read from
+pipeline config via `spark.conf.get`), never hardcoded.
 
 The export is a pretty-printed JSON **array**, not JSONL, and it is polymorphic in
 several fields, so bronze reads it with `multiLine` + `singleVariantColumn` and silver
@@ -45,8 +52,8 @@ casts lazily with `try_variant_get`. `docs/whoz_profile_data_model.md` explains 
 
 The landing folder is set in the pipeline's `configuration` block in
 `resources/whoz_ingestion_etl.pipeline.yml` (`whoz.profiles.source_path` and
-`whoz.profiles.schema_path`) — point it at the volume holding the export before
-deploying.
+`whoz.profiles.schema_path`) — currently the shared `oxygen_dev.landing.source` volume,
+filtered to Whoz's files by filename glob.
 
 
 ## Getting started
@@ -137,8 +144,9 @@ reassemble them into a list of `Row`s: round-tripping a `VARIANT` value through 
 `STRUCT<metadata: BINARY, value: BINARY>` layout instead — `try_variant_get` then fails
 with `DATATYPE_MISMATCH` even though the JSON is fine.
 
-**What's covered vs. not, today.** `test_silver_whoz_profile.py` covers `whoz_profile`
-only, against the type hazards documented in `docs/whoz_profile_data_model.md`
+**What's covered vs. not, today.** `test_silver_whoz_profile.py` covers `shape_profile()`
+(the row-shaping logic behind `silver.whoz_profiles`/`silver.whoz_profile_history`) only,
+against the type hazards documented in `docs/whoz_profile_data_model.md`
 (int/float `completionRate`, absent-vs-null `headline`). The other tables in
 `transformations/` don't have a `utilities` counterpart yet — extending the pattern
 (pulling their `.select(...)` / `spark.sql(...)` bodies into `utilities/`, one module per

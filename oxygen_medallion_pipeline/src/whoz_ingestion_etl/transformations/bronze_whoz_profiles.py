@@ -1,5 +1,5 @@
 # =====================================================================================
-# BRONZE — whoz_profiles_bronze
+# BRONZE — bronze.whoz_profiles
 #
 # One row per profile object from the Whoz export. The entire JSON object is stored
 # untouched in a single VARIANT column ("payload"). Nothing is inferred, nothing is
@@ -18,12 +18,28 @@ from pyspark.sql import functions as F
 # Set from the pipeline's 'configuration' block in
 # resources/whoz_ingestion_etl.pipeline.yml. The defaults below keep a bare "Run file"
 # in the workspace working when no configuration is supplied.
-SOURCE_PATH = spark.conf.get("whoz.profiles.source_path", "/Volumes/main/landing/whoz/profiles/")
-SCHEMA_PATH = spark.conf.get("whoz.profiles.schema_path", "/Volumes/main/landing/whoz/_schema/profiles")
+SOURCE_PATH = spark.conf.get("whoz.profiles.source_path", "/Volumes/oxygen_dev/landing/source/")
+SCHEMA_PATH = spark.conf.get(
+    "whoz.profiles.schema_path", "/Volumes/oxygen_dev/landing/source/_checkpoints/whoz_profiles_schema"
+)
+# The 'source' volume is a shared landing zone, not Whoz-specific, so filter to just
+# our files. Matches both the bare export name and a "YYYY-MM-DD_" generation-date
+# prefix, e.g. "2026-07-20_whoz__profile_report_anonymized.json" — Auto Loader picks
+# up each new dated file as it lands, no path change needed when the date rolls.
+FILE_NAME_GLOB = "*whoz__profile_report_anonymized.json"
+
+# Fully-qualified table names, built from pipeline config rather than hardcoded, so
+# bronze/silver can land in the same schema in dev (personal sandbox, no access-control
+# need) but separate schemas in prod (bronze holds raw, not-fully-anonymized payloads —
+# see docs/whoz_profile_data_model.md). See resources/whoz_ingestion_etl.pipeline.yml
+# and databricks.yml's bronze_schema/silver_schema variables.
+CATALOG = spark.conf.get("whoz.catalog", "main")
+BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema", "bronze")
+BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
 
 @dp.table(
-    name="whoz_profiles_bronze",
+    name=BRONZE_TABLE,
     comment=(
         "Raw Whoz profile export, one row per profile object. Full JSON kept as-is in "
         "the VARIANT column 'payload' — no schema inference, immune to source drift."
@@ -34,7 +50,7 @@ SCHEMA_PATH = spark.conf.get("whoz.profiles.schema_path", "/Volumes/main/landing
     },
     cluster_by=["ingest_date", "profile_id"],
 )
-def whoz_profiles_bronze():
+def whoz_profiles():
     raw = (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
@@ -45,6 +61,7 @@ def whoz_profiles_bronze():
         # restarts, no "cannot cast" failures on records like the +22015-07-31 endDate.
         .option("singleVariantColumn", "payload")
         .option("cloudFiles.schemaLocation", SCHEMA_PATH)
+        .option("pathGlobFilter", FILE_NAME_GLOB)
         .load(SOURCE_PATH)
     )
 
@@ -79,12 +96,12 @@ def whoz_profiles_bronze():
 # vanished field visible the day it happens.
 # -------------------------------------------------------------------------------------
 @dp.materialized_view(
-    name="whoz_profiles_payload_shapes",
+    name=f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles_payload_shapes",
     comment="Distinct top-level key sets seen in the bronze payload, with first/last seen.",
 )
 def whoz_profiles_payload_shapes():
     return (
-        spark.read.table("whoz_profiles_bronze")
+        spark.read.table(BRONZE_TABLE)
         .groupBy("payload_top_level_keys")
         .agg(
             F.count("*").alias("record_count"),

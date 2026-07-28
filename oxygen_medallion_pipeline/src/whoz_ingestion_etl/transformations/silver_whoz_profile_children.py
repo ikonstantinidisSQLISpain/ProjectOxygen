@@ -1,10 +1,10 @@
 # =====================================================================================
 # SILVER — child tables exploded out of the bronze VARIANT payload
 #
-#   whoz_profile_aptitude       113,810 rows   PK aptitude_id
-#   whoz_profile_position        15,104 rows   PK position_id (self-hierarchical)
-#   whoz_position_aptitude_ref  137,050 rows   PK (position_id, aptitude_id)
-#   whoz_profile_skill_rating     6,792 rows   legacy — see docs/whoz_profile_data_model.md
+#   whoz_profile_aptitudes       113,810 rows   PK aptitude_id
+#   whoz_profile_positions        15,104 rows   PK position_id (self-hierarchical)
+#   whoz_position_aptitude_refs  137,050 rows   PK (position_id, aptitude_id)
+#   whoz_profile_skill_ratings     6,792 rows   legacy — see docs/whoz_profile_data_model.md
 #
 # variant_explode is a table-valued generator, so it goes in the FROM clause via
 # LATERAL. That is why these use spark.sql rather than the DataFrame API — there is
@@ -13,20 +13,27 @@
 
 from pyspark import pipelines as dp
 
+# See bronze_whoz_profiles.py for why these are read from pipeline config instead of
+# hardcoded — bronze/silver share a schema in dev, split in prod.
+CATALOG = spark.conf.get("whoz.catalog", "main")
+BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema", "bronze")
+SILVER_SCHEMA = spark.conf.get("whoz.silver_schema", "silver")
+BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
+
 
 # -------------------------------------------------------------------------------------
 # APTITUDES — the skills inventory. 2,134 of 4,113 profiles have any; max 373 per profile.
 # -------------------------------------------------------------------------------------
 @dp.table(
-    name="whoz_profile_aptitude",
+    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profile_aptitudes",
     comment="One row per aptitude (skill / language / tool) declared on a profile.",
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "aptitude_type"],
 )
 @dp.expect_or_drop("aptitude_id_not_null", "aptitude_id IS NOT NULL")
 @dp.expect("proficiency_in_range", "proficiency IS NULL OR proficiency BETWEEN 0 AND 5")
-def whoz_profile_aptitude():
-    return spark.sql("""
+def whoz_profile_aptitudes():
+    return spark.sql(f"""
         SELECT
             try_variant_get(a.value, '$.id',        'string')  AS aptitude_id,
             b.profile_id,
@@ -48,7 +55,7 @@ def whoz_profile_aptitude():
             try_variant_get(a.value, '$.talentId',  'string')  AS embedded_talent_id,
             a.value                                            AS aptitude_payload,
             b.ingested_at
-        FROM STREAM(whoz_profiles_bronze) AS b,
+        FROM STREAM({BRONZE_TABLE}) AS b,
              LATERAL variant_explode(b.payload:aptitudes) AS a
     """)
 
@@ -58,7 +65,7 @@ def whoz_profile_aptitude():
 # parent_position_id (all 1,197 parent references resolve within the file).
 # -------------------------------------------------------------------------------------
 @dp.table(
-    name="whoz_profile_position",
+    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profile_positions",
     comment="One row per position (job or mission) held on a profile. Self-hierarchical.",
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "start_date"],
@@ -68,8 +75,8 @@ def whoz_profile_aptitude():
 # while the raw string is still there. Warn, don't drop.
 @dp.expect("end_date_parsed", "end_date_raw IS NULL OR end_date IS NOT NULL")
 @dp.expect("dates_ordered", "start_date IS NULL OR end_date IS NULL OR end_date >= start_date")
-def whoz_profile_position():
-    return spark.sql("""
+def whoz_profile_positions():
+    return spark.sql(f"""
         SELECT
             try_variant_get(p.value, '$.id',       'string')  AS position_id,
             b.profile_id,
@@ -94,7 +101,7 @@ def whoz_profile_position():
                                                               AS aptitude_reference_count,
             p.value                                           AS position_payload,
             b.ingested_at
-        FROM STREAM(whoz_profiles_bronze) AS b,
+        FROM STREAM({BRONZE_TABLE}) AS b,
              LATERAL variant_explode(b.payload:positions) AS p
     """)
 
@@ -105,14 +112,14 @@ def whoz_profile_position():
 # positions, which is the point of the table.
 # -------------------------------------------------------------------------------------
 @dp.table(
-    name="whoz_position_aptitude_ref",
+    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_position_aptitude_refs",
     comment="Bridge: skills claimed on each position. Grain = (position_id, aptitude_id).",
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "position_id"],
 )
 @dp.expect_or_drop("keys_not_null", "position_id IS NOT NULL AND aptitude_id IS NOT NULL")
-def whoz_position_aptitude_ref():
-    return spark.sql("""
+def whoz_position_aptitude_refs():
+    return spark.sql(f"""
         SELECT
             b.profile_id,
             try_variant_get(p.value, '$.id', 'string')          AS position_id,
@@ -122,7 +129,7 @@ def whoz_position_aptitude_ref():
             try_variant_get(r.value, '$.type',       'string')  AS aptitude_type,
             r.pos                                               AS ordinal,
             b.ingested_at
-        FROM STREAM(whoz_profiles_bronze) AS b,
+        FROM STREAM({BRONZE_TABLE}) AS b,
              LATERAL variant_explode(b.payload:positions) AS p,
              LATERAL variant_explode(p.value:aptitudeReferences) AS r
     """)
@@ -134,12 +141,12 @@ def whoz_position_aptitude_ref():
 # confirm with Whoz before anyone builds a metric on it.
 # -------------------------------------------------------------------------------------
 @dp.table(
-    name="whoz_profile_skill_rating",
+    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profile_skill_ratings",
     comment="Legacy skillRatings array. Sparse and mostly zero — verify before use.",
     table_properties={"quality": "silver"},
 )
-def whoz_profile_skill_rating():
-    return spark.sql("""
+def whoz_profile_skill_ratings():
+    return spark.sql(f"""
         SELECT
             b.profile_id,
             b.talent_id,
@@ -147,7 +154,7 @@ def whoz_profile_skill_rating():
             try_variant_get(s.value, '$.skill',  'string') AS skill_name,
             try_variant_get(s.value, '$.rating', 'int')    AS rating,
             b.ingested_at
-        FROM STREAM(whoz_profiles_bronze) AS b,
+        FROM STREAM({BRONZE_TABLE}) AS b,
              LATERAL variant_explode(b.payload:skillRatings) AS s
     """)
 
@@ -158,7 +165,7 @@ def whoz_profile_skill_rating():
 #   targetSkillRatings, positions[].customFields, headline.mobilityDestinations
 #
 # Rather than build empty tables, watch for them filling up. Add this expectation to
-# whoz_profile and it will alert the first time Whoz starts sending any of them:
+# whoz_profiles and it will alert the first time Whoz starts sending any of them:
 #
 #   @dp.expect("unmodelled_collections_still_empty",
 #              "try_cast(size(cast(payload:customFields as array<variant>)) as int) = 0 "

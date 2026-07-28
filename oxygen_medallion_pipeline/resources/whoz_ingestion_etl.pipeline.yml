@@ -13,11 +13,21 @@ resources:
         - glob:
             include: ../src/whoz_ingestion_etl/transformations/**
 
-      # Landing location of the Whoz export. Read by bronze_whoz_profiles.py through
-      # spark.conf.get, so it can be changed here without touching the transformation.
+      # Read by the transformation files through spark.conf.get, so these can change
+      # without touching the Python source. Every table's name is schema-qualified
+      # with catalog/bronze_schema/silver_schema explicitly (see each file) rather
+      # than relying on the catalog/schema defaults above, since those two need to
+      # diverge in prod (see databricks.yml) — bronze and silver must land in
+      # different schemas there, not the pipeline's single default.
       configuration:
-        whoz.profiles.source_path: /Volumes/main/landing/whoz/profiles/
-        whoz.profiles.schema_path: /Volumes/main/landing/whoz/_schema/profiles
+        # Landing location of the Whoz export. 'source' is a shared landing volume
+        # (not Whoz-specific) — bronze filters to just Whoz's files via a filename
+        # glob, see FILE_NAME_GLOB.
+        whoz.profiles.source_path: /Volumes/oxygen_dev/landing/source/
+        whoz.profiles.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_profiles_schema
+        whoz.catalog: ${var.catalog}
+        whoz.bronze_schema: ${var.bronze_schema}
+        whoz.silver_schema: ${var.silver_schema}
 
       environment:
         dependencies:
