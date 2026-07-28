@@ -6,10 +6,18 @@
 # cast, nothing can drift: if Whoz adds, removes or retypes a field, this table keeps
 # ingesting and the change surfaces downstream instead of failing the load.
 #
-# Source is a pretty-printed JSON *array* (not JSONL), so multiLine is mandatory.
-# Spark yields one row per array element.
+# Source is a pretty-printed JSON *array* (not JSONL). Confirmed the hard way against
+# a live run: multiLine + singleVariantColumn do NOT give one row per array element —
+# multiLine loads the whole file as a single entity, and singleVariantColumn puts all
+# of it into one VARIANT value in one row. So `raw` below is one row holding the whole
+# 4,113-element array as a single VARIANT, and we explicitly explode that array with
+# variant_explode — the same table-valued-function pattern already used in
+# silver_whoz_profile_children.py for positions[]/aptitudes[], just applied one level
+# higher, at the array root instead of a nested field.
 #
-# See docs/whoz_profile_data_model.md for the analysis these choices are based on.
+# See docs/whoz_profile_data_model.md for the field-level analysis these choices are
+# based on (that doc predates this fix and still describes the intended per-profile
+# shape correctly — just not the mechanism that gets you there).
 # =====================================================================================
 
 from pyspark import pipelines as dp
@@ -54,40 +62,59 @@ def whoz_profiles():
     raw = (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
-        # The root of the file is a JSON array spanning many lines.
+        # Loads the whole file as one entity — required for a JSON array root, but see
+        # the module docstring: this means one row per FILE here, not per profile yet.
         .option("multiLine", "true")
-        # THE KEY OPTION: the whole element becomes one VARIANT column called "payload".
+        # Puts that one row's entire content into a single VARIANT column, "payload".
         # No inferred schema, so no schemaHints, no rescuedDataColumn, no evolution
         # restarts, no "cannot cast" failures on records like the +22015-07-31 endDate.
         .option("singleVariantColumn", "payload")
         .option("cloudFiles.schemaLocation", SCHEMA_PATH)
         .option("pathGlobFilter", FILE_NAME_GLOB)
         .load(SOURCE_PATH)
+        # _metadata is a hidden struct that doesn't survive createOrReplaceTempView
+        # below — confirmed the hard way. Pull the fields we need into plain columns
+        # first, while it's still a real DataFrame.
+        .select(
+            "payload",
+            F.col("_metadata.file_path").alias("_source_file"),
+            F.col("_metadata.file_name").alias("_source_file_name"),
+            F.col("_metadata.file_size").alias("_source_file_size"),
+            F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
+        )
     )
+    raw.createOrReplaceTempView("_whoz_profiles_raw")
 
-    return raw.select(
-        # ---- business keys lifted out for clustering / dedup only ----
-        # try_variant_get returns NULL rather than raising if the path is missing,
-        # so a malformed record still lands instead of killing the batch.
-        F.try_variant_get("payload", "$.id", "string").alias("profile_id"),
-        F.try_variant_get("payload", "$.talentId", "string").alias("talent_id"),
-        F.try_variant_get("payload", "$.federationId", "string").alias("federation_id"),
-        # ---- THE PAYLOAD ----
-        F.col("payload"),
-        # ---- INGESTION METADATA ----
-        F.col("_metadata.file_path").alias("source_file"),
-        F.col("_metadata.file_name").alias("source_file_name"),
-        F.col("_metadata.file_size").alias("source_file_size"),
-        F.col("_metadata.file_modification_time").alias("source_file_modified_at"),
-        F.current_timestamp().alias("ingested_at"),
-        F.current_date().alias("ingest_date"),
-        F.lit("whoz").alias("source_system"),
-        F.lit("profile_report").alias("source_entity"),
-        # Cheap drift sensor: the sorted top-level key list of this record.
-        # Group by this column to see every distinct payload shape in the table.
-        F.expr("array_join(array_sort(map_keys(cast(payload as map<string, variant>))), ',')")
-        .alias("payload_top_level_keys"),
-    )
+    # variant_explode is a table-valued generator, so it goes in the FROM clause via
+    # LATERAL — there is no DataFrame equivalent that unnests a VARIANT array in one
+    # step (same reason silver_whoz_profile_children.py uses spark.sql for
+    # positions[]/aptitudes[]). b.payload here is the whole array; e.value is one
+    # profile object per row, which is what makes this one row per profile at last.
+    return spark.sql("""
+        SELECT
+            -- try_variant_get returns NULL rather than raising if the path is
+            -- missing, so a malformed record still lands instead of killing the batch.
+            try_variant_get(e.value, '$.id', 'string')          AS profile_id,
+            try_variant_get(e.value, '$.talentId', 'string')    AS talent_id,
+            try_variant_get(e.value, '$.federationId', 'string') AS federation_id,
+            -- ---- THE PAYLOAD: one profile object, not the whole array ----
+            e.value                                             AS payload,
+            -- ---- INGESTION METADATA ----
+            b._source_file                                      AS source_file,
+            b._source_file_name                                 AS source_file_name,
+            b._source_file_size                                 AS source_file_size,
+            b._source_file_modified_at                          AS source_file_modified_at,
+            current_timestamp()                                 AS ingested_at,
+            current_date()                                      AS ingest_date,
+            'whoz'                                              AS source_system,
+            'profile_report'                                    AS source_entity,
+            -- Cheap drift sensor: the sorted top-level key list of this profile.
+            -- Group by this column to see every distinct payload shape in the table.
+            array_join(array_sort(map_keys(cast(e.value as map<string, variant>))), ',')
+                                                                 AS payload_top_level_keys
+        FROM _whoz_profiles_raw AS b,
+             LATERAL variant_explode(b.payload) AS e
+    """)
 
 
 # -------------------------------------------------------------------------------------

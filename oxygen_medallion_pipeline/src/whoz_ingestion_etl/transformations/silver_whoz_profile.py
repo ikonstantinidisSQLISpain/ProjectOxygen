@@ -12,7 +12,10 @@
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
-from whoz_ingestion_etl.utilities.profile_shaping import shape_profile
+# Not "whoz_ingestion_etl.utilities...": the pipeline's root_path IS src/whoz_ingestion_etl,
+# so that folder itself is on sys.path at runtime, not its parent. "whoz_ingestion_etl" is
+# never a valid import prefix here — see tests/test_import_paths.py, which catches this.
+from utilities.profile_shaping import shape_profile
 
 # See bronze_whoz_profiles.py for why these are read from pipeline config instead of
 # hardcoded — bronze/silver share a schema in dev, split in prod.
@@ -43,7 +46,10 @@ def whoz_profile_shaped():
 # snapshot upserts in place; the previous version of a changed profile is gone.
 dp.create_streaming_table(
     name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profiles",
-    comment="One row per Whoz profile, current state only — see whoz_profile_history for prior versions.",
+    comment=(
+        "One row per Whoz profile, current state only — see whoz_profile_history for prior "
+        "versions. No 'payload' column: query bronze.whoz_profiles by profile_id for the raw JSON."
+    ),
     table_properties={"quality": "silver"},
     cluster_by=["federation_id", "profile_id"],
 )
@@ -55,6 +61,15 @@ dp.create_auto_cdc_flow(
     # protects against an older dated export landing after a newer one (e.g. backfill).
     sequence_by=F.col("source_last_modified_at"),
     stored_as_scd_type="1",
+    # AUTO CDC compares whole rows across versions to detect real changes, and VARIANT
+    # doesn't support the `<=>` comparison that needs — confirmed the hard way, this
+    # broke whoz_profile_history's SCD2 flow below with INVALID_ORDERING_TYPE the
+    # moment there was prior state to compare against. Excluding payload here too even
+    # though this SCD1 flow hasn't shown the same failure yet: it's the same
+    # column-comparison mechanism, so a second run (once there's a prior row to diff
+    # against) would very likely hit it too. Bronze keeps the full raw payload forever
+    # regardless, so nothing is actually lost by not duplicating it here.
+    except_column_list=["payload"],
 )
 
 # whoz_profile_history — SCD Type 2: every version of every profile, each row valid
@@ -64,7 +79,8 @@ dp.create_streaming_table(
     name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profile_history",
     comment=(
         "Full version history of whoz_profiles, one row per (profile_id, version). "
-        "__START_AT/__END_AT mark each version's validity window; NULL __END_AT is current."
+        "__START_AT/__END_AT mark each version's validity window; NULL __END_AT is current. "
+        "No 'payload' column: query bronze.whoz_profiles by profile_id for the raw JSON."
     ),
     table_properties={"quality": "silver"},
     cluster_by=["profile_id"],
@@ -75,6 +91,11 @@ dp.create_auto_cdc_flow(
     keys=["profile_id"],
     sequence_by=F.col("source_last_modified_at"),
     stored_as_scd_type="2",
+    # See the same option on whoz_profiles' flow above — this is the one that actually
+    # failed: [DATATYPE_MISMATCH.INVALID_ORDERING_TYPE] "The <=> does not support
+    # ordering on type VARIANT", from AUTO CDC's SCD2 version-boundary detection trying
+    # to compare payload across consecutive rows for this profile_id.
+    except_column_list=["payload"],
 )
 
 
