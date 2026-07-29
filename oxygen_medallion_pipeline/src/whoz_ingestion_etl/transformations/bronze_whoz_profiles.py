@@ -24,12 +24,12 @@ from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
 # Set from the pipeline's 'configuration' block in
-# resources/whoz_ingestion_etl.pipeline.yml. The defaults below keep a bare "Run file"
-# in the workspace working when no configuration is supplied.
-SOURCE_PATH = spark.conf.get("whoz.profiles.source_path", "/Volumes/oxygen_dev/landing/source/")
-SCHEMA_PATH = spark.conf.get(
-    "whoz.profiles.schema_path", "/Volumes/oxygen_dev/landing/source/_checkpoints/whoz_profiles_schema"
-)
+# resources/whoz_ingestion_etl.pipeline.yml — that yml is the only source of truth
+# for these, so no fallback value here: a deploy missing this config should fail
+# loudly (NoSuchElementException naming the key) instead of silently landing on
+# someone else's volume or catalog.
+SOURCE_PATH = spark.conf.get("whoz.profiles.source_path")
+SCHEMA_PATH = spark.conf.get("whoz.profiles.schema_path")
 # The 'source' volume is a shared landing zone, not Whoz-specific, so filter to just
 # our files. Matches both the bare export name and a "YYYY-MM-DD_" generation-date
 # prefix, e.g. "2026-07-20_whoz__profile_report_anonymized.json" — Auto Loader picks
@@ -41,8 +41,8 @@ FILE_NAME_GLOB = "*whoz__profile_report_anonymized.json"
 # need) but separate schemas in prod (bronze holds raw, not-fully-anonymized payloads —
 # see docs/whoz_profile_data_model.md). See resources/whoz_ingestion_etl.pipeline.yml
 # and databricks.yml's bronze_schema/silver_schema variables.
-CATALOG = spark.conf.get("whoz.catalog", "main")
-BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema", "bronze")
+CATALOG = spark.conf.get("whoz.catalog")
+BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
 BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
 
@@ -83,6 +83,14 @@ def whoz_profiles():
             F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
         )
     )
+
+    # The temp view is NOT redundant, however much it looks it. Spark 3.4+ lets you bind
+    # a DataFrame straight into a query — spark.sql("... FROM {raw}", raw=raw) — and that
+    # is the obvious simplification here, but Lakeflow replaces spark.sql with its own
+    # wrapper whose signature takes no such kwargs. It fails at flow-analysis time with
+    # "_dlt_sql_fn() got an unexpected keyword argument 'raw'", and only inside a real
+    # pipeline: local pytest and `databricks bundle validate` both pass happily. Tried
+    # it, got exactly that. Leave the view.
     raw.createOrReplaceTempView("_whoz_profiles_raw")
 
     # variant_explode is a table-valued generator, so it goes in the FROM clause via

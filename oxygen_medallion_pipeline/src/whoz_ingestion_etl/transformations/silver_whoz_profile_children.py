@@ -13,11 +13,11 @@
 
 from pyspark import pipelines as dp
 
-# See bronze_whoz_profiles.py for why these are read from pipeline config instead of
-# hardcoded — bronze/silver share a schema in dev, split in prod.
-CATALOG = spark.conf.get("whoz.catalog", "main")
-BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema", "bronze")
-SILVER_SCHEMA = spark.conf.get("whoz.silver_schema", "silver")
+# See bronze_whoz_profiles.py — resources/whoz_ingestion_etl.pipeline.yml is the only
+# source of truth for these, so no fallback value here.
+CATALOG = spark.conf.get("whoz.catalog")
+BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
+SILVER_SCHEMA = spark.conf.get("whoz.silver_schema")
 BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
 

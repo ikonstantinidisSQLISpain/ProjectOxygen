@@ -7,11 +7,72 @@
 # fails to even collect. Keeping shaping logic here, with only plain pyspark.sql
 # imports, is what makes it unit-testable with a plain SparkSession.
 #
-# silver_whoz_profile.py imports shape_profile() and wraps it with @dp.table.
+# silver_whoz_profile.py imports shape_profile() and wraps it with @dp.table, and
+# imports PROFILE_COLUMNS as the declared schema of the tables it writes.
 # =====================================================================================
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+
+# The declared schema of silver.whoz_profiles / silver.whoz_profile_history. It lives
+# here, next to shape_profile(), because the two must agree column-for-column and
+# type-for-type — keeping them in one file means a change to one puts the other right
+# under your eyes. It is also why this constant is here rather than in
+# silver_whoz_profile.py: that module imports pyspark.pipelines and so cannot be
+# imported by a test, while this one can, which is what lets
+# tests/test_silver_whoz_profile.py both parse this DDL and diff it against
+# shape_profile()'s real output. A raw SQL string is unavoidable (it is what
+# create_streaming_table's schema= takes) and is unforgiving: a bare apostrophe inside
+# a COMMENT ends the string literal early and the whole schema fails to parse, which
+# no amount of py_compile / bundle validate will notice. Escape one by doubling it
+# ('Whoz''s'), and trust the tests to catch it if you forget.
+#
+# Order matches shape_profile()'s SELECT; excludes payload, which except_column_list
+# drops from both AUTO CDC flows (see silver_whoz_profile.py). Distributions named
+# here ("false on every record today") describe the current export, not a guarantee —
+# see docs/whoz_profile_data_model.md.
+PROFILE_COLUMNS = """
+    profile_id STRING NOT NULL COMMENT 'Whoz profile ID, stable primary key. NOT NULL is enforced upstream by profile_id_not_null (expect_or_drop)',
+    talent_id STRING COMMENT 'One profile per talent today; the model allows several versions per talent',
+    federation_id STRING COMMENT 'Tenant identifier; a single value across this whole export (single-tenant)',
+    version_name STRING COMMENT '"Main version" on every record today',
+    is_main_version BOOLEAN COMMENT 'true on every record today; is_main_version expectation upstream warns if that ever changes',
+    status STRING COMMENT 'DRAFT | VALIDATED | SUBMITTED',
+    content_language STRING COMMENT 'en / fr / nl / it / de / es, per docs/whoz_profile_data_model.md',
+    permission_scope STRING COMMENT 'SECRET on every record today',
+    travel_range STRING COMMENT 'DEFAULT on every record today',
+    is_removed BOOLEAN COMMENT 'false on every record today',
+    resume_relation_status STRING COMMENT 'Includes a typo in the source enum: RESUME_IMPORT_SUGGESTION_SUBMITED',
+    completion_rate DOUBLE COMMENT 'Profile completeness score, 0-1 (i.e. 0.42 = 42% complete). Computed by Whoz, not by us, from the weights assigned to the completion rules — see silver.whoz_profile_completion_rules. Source sends int on some records and float on others; always read as double',
+    completion_rate_computed_at TIMESTAMP COMMENT 'When completion_rate was last computed',
+    headline_job_title STRING COMMENT 'From the embedded headline object, absent on roughly a quarter of profiles',
+    seeking_opportunities BOOLEAN COMMENT 'Non-null on very few profiles today',
+    seeking_opportunities_updated_at TIMESTAMP,
+    headline_permission_scope STRING COMMENT 'SECRET on every record today',
+    headline_aim STRING COMMENT 'Null on every record today; kept so the column exists once Whoz starts populating it',
+    national_mobility STRING COMMENT 'Null on every record today; kept so the column exists once Whoz starts populating it',
+    international_mobility STRING COMMENT 'Null on every record today; kept so the column exists once Whoz starts populating it',
+    mobility_date_raw STRING COMMENT 'Null on every record today; kept so the column exists once Whoz starts populating it',
+    mobility_note STRING COMMENT 'Null on every record today; kept so the column exists once Whoz starts populating it',
+    hobbies STRING COMMENT 'Free text',
+    source_created_at TIMESTAMP COMMENT 'When Whoz created this profile record',
+    source_created_by STRING COMMENT 'Whoz user ObjectId',
+    source_last_modified_at TIMESTAMP COMMENT 'Whoz''s own last-modified time on the record — what AUTO CDC sequences by, not our ingest time',
+    source_last_modified_by STRING,
+    source_last_explicit_update_at TIMESTAMP,
+    source_last_explicit_update_by STRING,
+    aptitude_count INT COMMENT 'size(aptitudes[]) at the source; exploded rows live in silver.whoz_profile_aptitudes',
+    position_count INT COMMENT 'size(positions[]) at the source; exploded rows live in silver.whoz_profile_positions',
+    skill_rating_count INT COMMENT 'size(skillRatings[]) at the source; legacy, mostly zero, see silver.whoz_profile_skill_ratings',
+    qualification_count INT COMMENT 'size(qualificationIds[]) at the source; too thin (423 values total) to model as its own table',
+    source_file STRING COMMENT 'Bronze lineage: which landed file this profile version came from',
+    ingested_at TIMESTAMP COMMENT 'Bronze lineage: when this snapshot was ingested, not when Whoz generated it'
+"""
+
+# Carried through shape_profile() but excluded from the declared schema above, because
+# create_auto_cdc_flow drops it via except_column_list (VARIANT can't be compared with
+# <=>). The alignment test uses this to diff the two without hardcoding the name twice.
+SHAPED_ONLY_COLUMNS = ["payload"]
 
 
 def vg(path, target_type):

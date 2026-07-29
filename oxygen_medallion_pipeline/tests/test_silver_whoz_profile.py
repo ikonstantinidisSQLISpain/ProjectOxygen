@@ -20,8 +20,11 @@ try_variant_get then fails with DATATYPE_MISMATCH. Confirmed by hand while writi
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import StructType
 
-from whoz_ingestion_etl.utilities.profile_shaping import shape_profile
+# Imported exactly the way the pipeline imports it — see pyproject.toml's pythonpath.
+# Not "whoz_ingestion_etl.utilities...", which resolves for neither.
+from utilities.profile_shaping import PROFILE_COLUMNS, SHAPED_ONLY_COLUMNS, shape_profile
 
 
 def _bronze_df(spark: SparkSession, rows: list[tuple[str, str, str]]) -> DataFrame:
@@ -40,15 +43,18 @@ def _bronze_df(spark: SparkSession, rows: list[tuple[str, str, str]]) -> DataFra
 
 
 def test_completion_rate_normalizes_int_and_float_to_double(spark: SparkSession):
+    # completionRate is a 0-1 fraction, not a 0-100 percentage (verified against the
+    # live export: min 0.0, max 1.0). The int form only ever occurs at the ends of that
+    # range, which is exactly where the int-vs-float hazard shows up.
     bronze = _bronze_df(spark, [
-        ("p1", "t1", '{"id": "p1", "talentId": "t1", "main": true, "completionRate": 42}'),
-        ("p2", "t2", '{"id": "p2", "talentId": "t2", "main": true, "completionRate": 42.5}'),
+        ("p1", "t1", '{"id": "p1", "talentId": "t1", "main": true, "completionRate": 1}'),
+        ("p2", "t2", '{"id": "p2", "talentId": "t2", "main": true, "completionRate": 0.425}'),
     ])
 
     result = shape_profile(bronze).select("profile_id", "completion_rate").orderBy("profile_id").collect()
 
-    assert result[0]["completion_rate"] == 42.0
-    assert result[1]["completion_rate"] == 42.5
+    assert result[0]["completion_rate"] == 1.0
+    assert result[1]["completion_rate"] == 0.425
     assert dict(shape_profile(bronze).dtypes)["completion_rate"] == "double"
 
 
@@ -59,8 +65,8 @@ def test_absent_headline_vs_null_field_both_resolve_to_null(spark: SparkSession)
     # payload column, not on the flattened columns.
     bronze = _bronze_df(spark, [
         ("p3", "t3", '{"id": "p3", "talentId": "t3", "main": true}'),
-        ("p4", "t4", '{"id": "p4", "talentId": "t4", "main": true, '
-                      '"headline": {"aim": null, "jobTitle": "Engineer"}}'),
+        ("p4", "t4", ('{"id": "p4", "talentId": "t4", "main": true, '
+                      '"headline": {"aim": null, "jobTitle": "Engineer"}}')),
     ])
 
     result = (
@@ -85,3 +91,39 @@ def test_missing_path_nulls_the_column_instead_of_failing(spark: SparkSession):
     assert row["profile_id"] == "p5"
     assert row["status"] is None
     assert row["completion_rate"] is None
+
+
+# -------------------------------------------------------------------------------------
+# The two tests below guard PROFILE_COLUMNS, the DDL string handed to
+# create_streaming_table(schema=...) in silver_whoz_profile.py.
+#
+# Nothing else in the toolchain looks inside that string: it is an opaque blob to
+# py_compile, to pytest and to `databricks bundle validate`, all three of which pass
+# green on a schema that cannot parse. The only other thing that would notice is a live
+# pipeline run. These two close that gap for the price of one local SparkSession.
+# -------------------------------------------------------------------------------------
+def test_profile_columns_is_valid_ddl(spark: SparkSession):
+    # Catches the easy and genuinely likely mistake: an unescaped apostrophe inside a
+    # COMMENT (write 'it''s', not 'it's') silently ends the string literal early and
+    # takes the whole schema down with it.
+    parsed = StructType.fromDDL(PROFILE_COLUMNS)
+
+    assert len(parsed.fields) > 0
+
+
+def test_declared_schema_matches_shape_profile_output(spark: SparkSession):
+    # The contract only means something if it describes what shape_profile() actually
+    # emits. Add a column to one and not the other and this fails here, in seconds,
+    # instead of part-way through a pipeline update.
+    bronze = _bronze_df(spark, [("p6", "t6", '{"id": "p6", "talentId": "t6", "main": true}')])
+
+    declared = [(f.name, f.dataType.simpleString()) for f in StructType.fromDDL(PROFILE_COLUMNS).fields]
+    actual = [
+        (f.name, f.dataType.simpleString())
+        for f in shape_profile(bronze).schema.fields
+        if f.name not in SHAPED_ONLY_COLUMNS
+    ]
+
+    # Compared as ordered lists: order is part of the contract, since AUTO CDC matches
+    # the source view to the target table positionally as well as by name.
+    assert declared == actual

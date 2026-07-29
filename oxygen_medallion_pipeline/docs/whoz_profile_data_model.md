@@ -54,7 +54,7 @@ Referential integrity is clean — checked across all records:
 | `permissionScope` | string | 4,113 | SECRET on every row |
 | `travelRange` | string | 4,113 | DEFAULT on every row |
 | `removed` | bool | 4,113 | `false` on every row |
-| `completionRate` | **int or float** | 4,113 | 0–100; see type hazards |
+| `completionRate` | **int or float** | 4,113 | 0–1, a fraction not a percentage (0.42 = 42%); see type hazards |
 | `completionDetails` | **object or array** | 4,113 | see type hazards |
 | `completionRateLastComputedDate` | string | 3,390 | ISO-8601 |
 | `createdDate`, `lastModifiedDate` | string | 4,113 | ISO-8601 |
@@ -129,6 +129,11 @@ weights constant across all profiles and summing to 65:
 This is a map, not a struct — Whoz can add a rule at any time and every downstream
 struct schema breaks. Model it as `MAP<STRING, STRUCT<...>>` or, better, explode it
 to one row per (profile, rule) as the pipeline below does.
+
+`completionRate` is related to these weights but is **not** simply
+`satisfied_weight / 65` — checked against the live export, that identity holds on
+only 1,200 of the 3,390 records that have `completionDetails`. Treat the rate as an
+opaque score computed by Whoz; don't try to recompute or reconcile it locally.
 
 ### `headline` — 1:1 nested object, present on 3,069 profiles
 

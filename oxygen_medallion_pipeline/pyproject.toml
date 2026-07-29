@@ -29,9 +29,16 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
+# Lakeflow injects `spark` into every transformation module's namespace at runtime;
+# there is no import that would satisfy F821. Declaring it here lets ruff check the
+# rest of those files instead of drowning the report in 19 false positives.
+builtins = ["spark"]
 
 [tool.pytest.ini_options]
-# src/whoz_ingestion_etl is deployed straight onto the pipeline's path by Lakeflow
-# (via resources/whoz_ingestion_etl.pipeline.yml's root_path/libraries.glob), not
-# installed as a package. This makes it importable for tests too.
-pythonpath = ["src"]
+# Deliberately src/whoz_ingestion_etl and NOT src. The pipeline's root_path IS
+# src/whoz_ingestion_etl (resources/whoz_ingestion_etl.pipeline.yml), so at runtime
+# that folder is on sys.path and modules are imported as `utilities.x` — never
+# `whoz_ingestion_etl.utilities.x`. Pointing pytest at the same folder means tests
+# import by the exact path production uses, so a wrong prefix fails locally and in CI
+# rather than surviving to a deploy (which is how it was found the first time).
+pythonpath = ["src/whoz_ingestion_etl"]
