@@ -58,7 +58,7 @@ targets:
       silver_schema: silver
   test:
     # Same shape as dev, one tier up — deploys on push to the 'test' branch.
-    mode: development
+    mode: production
     workspace:
       host: https://adb-7405610661645830.10.azuredatabricks.net
     presets:
