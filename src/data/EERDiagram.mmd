@@ -1,86 +1,117 @@
 erDiagram
     bu {
-        BIGINT id
+        BIGINT id PK
         STRING name
-        STRING type
+        LITERAL type
         STRING symbole
         BOOL active
         STRING calendar
-        BIGINT society_id
-        BIGINT entity_id
-        CHECK manager
     }
 
     society {
-        BIGINT id
+        BIGINT id PK
         STRING name
         BOOL active
     }
 
     entity {
-        BIGINT id
+        BIGINT id PK
         STRING name
         BOOL active
-        CHECK manager
+    }
+
+    bu }o -- || society : belongs_to
+    bu }o -- || entity : belongs_to
+    
+    site {
+        BIGINT id PK
+        STRING name
+        BOOL active
+    }
+
+    zone {
+        BIGINT id PK
     }
 
     department {
-        BIGINT id
+        BIGINT id PK
+        STRING name
         STRING code
         BOOL active
-        STRING name
-        CHECK associated_zone: FK multi
-        CHECK associated_service_line: FK multi
-    }
-
-    service_line {
-        BIGINT id
-        STRING code
-        BOOL active
-        STRING name
-        CHECK associated_zone
-        CHECK assoicated_practice_list
-    }
-
-    site {
-        BIGINT id
-        BOOL active
-        STRING name
-    }
-
-    timesheet_report { % Cada fila es 
-        BIGINT id
-        INT year
-        SMALLINT month
-        STRING worker_id (uid)
-
-    }
-
-    activity {
-        BIGINT id
-        STRING type
-        STRING code
-        STRING type_lib
     }
 
     worker {
-        BIGINT id
+        BIGINT id PK
         BOOL active
-        STRING mail
-        STRING start_date
-        STRING seniority_date
+        DATE start_date
+        TINYINT seniority_date
         STRING job_title
-        STRING productivity_coefficient
         STRING fulltime_or_parttime
-        CHECK std_cost
-        CHECK gcm
-        CHECK tariff
-        CHECK skill
-        CHECK position
-        CHECK employee_category
-        STRING site_id
-        STRING bu_id
-        STRING service_line_department_id
-        STRING direct_manager_id
+        STRING productivity_coefficient
+        STRING gcm_job
+        STRING gcm_grade
+        STRING gcm_job_family
+        VARIANT std_cost
+        VARIANT tariff
+        VARIANT skill
+        VARIANT employee_category
     }
 
+    department || -- o{ zone : has
+    worker }| -- || bu : works_on
+    worker }| -- || site : is_in
+    worker }o -- o| worker : has_tl_or_rh
+    worker }o -- o| worker : has_direct_manager
+
+    service_line {
+        BIGINT id PK
+        STRING code
+        BOOL active
+        STRING name
+    }
+
+    service_line }o -- o{ zone : has
+
+    collab_status {
+        BIGINT worker_id PK, FK
+        BIGINT department_id PK, FK
+        BIGINT service_line_id PK, FK
+        INT year PK
+        TINYINT month PK
+        STRING status
+    }
+
+    collab_status }o -- o{ worker : collabs_with
+    collab_status }o -- o{ department : collabs_with
+    collab_status }o -- o{ service_line : collabs_in
+
+    activity {
+        STRING type_id PK
+        STRING type_lib
+        STRING activity
+        BOOL is_project
+    }
+
+    activity }o -- o| service_line : has
+    activity }o -- o| department : has
+
+    timesheet_report {
+        BIGINT worker_id PK, FK
+        INT year PK
+        TINYINT month PK
+        STRING activity_type_id PK, FK
+        INT imputation
+    }
+
+    timesheet_report }o -- || worker : has
+    timesheet_report }o -- || activity : has
+
+
+    leave_report {
+        BIGINT worker_id PK, FK
+        DATE departure_date PK
+        STRING departure_type
+        DATE date_of_receipt
+    }
+
+    leave_report }o -- || worker : has

@@ -61,7 +61,7 @@ This category contains everythin related to the task and their performance.
 
 The relations are the next:
 
-* A service_line maybe "done" in multiple zones:
+* A service_line could be "done" in multiple zones:
 * A timesheet record has 1 activity, but one activity may be in different records.
 * An activity may have a service_line and a department.
 * The relations in collab_status are clear
@@ -166,10 +166,10 @@ The relationsip between each department and each zone.
 | skill                    | VARIANT |                                          |            |       | code, description_en, description_fr                                                                 |
 | position                 | VARIANT |                                          |            |       | code, active, description_en, description_fr                                                         |
 | employee_category        | VARIANT |                                          |            |       | code, active, description_en, description_fr                                                         |
-| bu_id                    | BIGINT  | Unit that this person manages.           |            | True  |                                                                                                      |
-| site_id                  | BIGINT  | Site where this person works.            |            | True  |                                                                                                      |
-| tl_rh                    | BIGINT  | ID of associated Team Leader or RRHH.    | != id      | True  | An ID from same table.                                                                               |
-| direct_manager           | BIGINT  | ID of superior manager.                  | != id      | True  | An ID from same table.                                                                               |
+| bu_id                    | BIGINT  | Unit that this person manages.           |            | FK    |                                                                                                      |
+| site_id                  | BIGINT  | Site where this person works.            |            | FK    |                                                                                                      |
+| tl_rh                    | BIGINT  | ID of associated Team Leader or RRHH.    | != id      | FK    | An ID from same table.                                                                               |
+| direct_manager           | BIGINT  | ID of superior manager.                  | != id      | FK    | An ID from same table.                                                                               |
 | -------                  |         |                                          |            |       | service_line and department has been discarded since they are portraited in the collab_status table. |
 
 
