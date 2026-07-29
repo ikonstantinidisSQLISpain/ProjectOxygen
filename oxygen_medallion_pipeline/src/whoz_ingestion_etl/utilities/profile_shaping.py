@@ -27,10 +27,9 @@ from pyspark.sql import functions as F
 # no amount of py_compile / bundle validate will notice. Escape one by doubling it
 # ('Whoz''s'), and trust the tests to catch it if you forget.
 #
-# Order matches shape_profile()'s SELECT; excludes payload, which except_column_list
-# drops from both AUTO CDC flows (see silver_whoz_profile.py). Distributions named
-# here ("false on every record today") describe the current export, not a guarantee —
-# see docs/whoz_profile_data_model.md.
+# Matches shape_profile()'s SELECT exactly, column for column and in order — the test
+# asserts precisely that. Distributions named here ("false on every record today")
+# describe the current export, not a guarantee — see docs/whoz_profile_data_model.md.
 PROFILE_COLUMNS = """
     profile_id STRING NOT NULL COMMENT 'Whoz profile ID, stable primary key. NOT NULL is enforced upstream by profile_id_not_null (expect_or_drop)',
     talent_id STRING COMMENT 'One profile per talent today; the model allows several versions per talent',
@@ -68,11 +67,6 @@ PROFILE_COLUMNS = """
     source_file STRING COMMENT 'Bronze lineage: which landed file this profile version came from',
     ingested_at TIMESTAMP COMMENT 'Bronze lineage: when this snapshot was ingested, not when Whoz generated it'
 """
-
-# Carried through shape_profile() but excluded from the declared schema above, because
-# create_auto_cdc_flow drops it via except_column_list (VARIANT can't be compared with
-# <=>). The alignment test uses this to diff the two without hardcoding the name twice.
-SHAPED_ONLY_COLUMNS = ["payload"]
 
 
 def vg(path, target_type):
@@ -133,8 +127,15 @@ def shape_profile(bronze: DataFrame) -> DataFrame:
         .alias("skill_rating_count"),
         F.expr("try_cast(size(cast(payload:qualificationIds as array<variant>)) as int)")
         .alias("qualification_count"),
-        # ---- keep the raw payload so nothing modelled later is lost ----
-        F.col("payload"),
+        # No payload column in the OUTPUT. Bronze keeps the full raw VARIANT forever
+        # (join back on profile_id) and the child tables explode it straight off bronze,
+        # so nothing needs it here: both AUTO CDC flows discarded it anyway, and it is
+        # what made them fail on VARIANT comparison in the first place.
+        #
+        # Note this does not avoid *reading* payload — every column above is derived
+        # from it, so Delta reads it regardless. What it avoids is carrying the single
+        # largest column of the dataset through the view and into the AUTO CDC merge
+        # only to drop it there.
         # ---- lineage ----
         F.col("source_file"),
         F.col("ingested_at"),

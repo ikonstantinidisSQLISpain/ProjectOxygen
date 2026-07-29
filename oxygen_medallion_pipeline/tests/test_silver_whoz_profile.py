@@ -24,7 +24,7 @@ from pyspark.sql.types import StructType
 
 # Imported exactly the way the pipeline imports it — see pyproject.toml's pythonpath.
 # Not "whoz_ingestion_etl.utilities...", which resolves for neither.
-from utilities.profile_shaping import PROFILE_COLUMNS, SHAPED_ONLY_COLUMNS, shape_profile
+from utilities.profile_shaping import PROFILE_COLUMNS, shape_profile
 
 
 def _bronze_df(spark: SparkSession, rows: list[tuple[str, str, str]]) -> DataFrame:
@@ -118,11 +118,7 @@ def test_declared_schema_matches_shape_profile_output(spark: SparkSession):
     bronze = _bronze_df(spark, [("p6", "t6", '{"id": "p6", "talentId": "t6", "main": true}')])
 
     declared = [(f.name, f.dataType.simpleString()) for f in StructType.fromDDL(PROFILE_COLUMNS).fields]
-    actual = [
-        (f.name, f.dataType.simpleString())
-        for f in shape_profile(bronze).schema.fields
-        if f.name not in SHAPED_ONLY_COLUMNS
-    ]
+    actual = [(f.name, f.dataType.simpleString()) for f in shape_profile(bronze).schema.fields]
 
     # Compared as ordered lists: order is part of the contract, since AUTO CDC matches
     # the source view to the target table positionally as well as by name.
