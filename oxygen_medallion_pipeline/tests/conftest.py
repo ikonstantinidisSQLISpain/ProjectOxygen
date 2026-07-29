@@ -35,9 +35,13 @@ def spark() -> SparkSession:
             df = spark.createDataFrame([(1,)], ["x"])
             assert df.count() == 1
     """
-    session = SparkSession.builder.appName("oxygen_medallion_pipeline-tests").master("local[2]").getOrCreate()
+    builder = SparkSession.builder.appName("oxygen_medallion_pipeline-tests")
+    if not os.environ.get("SPARK_REMOTE"):
+        builder = builder.master("local[2]")
+    session = builder.getOrCreate()
     yield session
-    session.stop()
+    if not os.environ.get("SPARK_REMOTE"):
+        session.stop()
 
 
 @pytest.fixture()
