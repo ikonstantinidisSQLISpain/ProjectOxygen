@@ -61,15 +61,11 @@ dp.create_auto_cdc_flow(
     # protects against an older dated export landing after a newer one (e.g. backfill).
     sequence_by=F.col("source_last_modified_at"),
     stored_as_scd_type="1",
-    # AUTO CDC compares whole rows across versions to detect real changes, and VARIANT
-    # doesn't support the `<=>` comparison that needs — confirmed the hard way, this
-    # broke whoz_profile_history's SCD2 flow below with INVALID_ORDERING_TYPE the
-    # moment there was prior state to compare against. Excluding payload here too even
-    # though this SCD1 flow hasn't shown the same failure yet: it's the same
-    # column-comparison mechanism, so a second run (once there's a prior row to diff
-    # against) would very likely hit it too. Bronze keeps the full raw payload forever
-    # regardless, so nothing is actually lost by not duplicating it here.
-    except_column_list=["payload"],
+    # No except_column_list: the source view no longer carries a payload column at all
+    # (see shape_profile). It used to, and had to be excluded here, because AUTO CDC
+    # compares whole rows with `<=>` to detect real changes and VARIANT does not support
+    # that comparison — it failed with INVALID_ORDERING_TYPE. Not selecting the column
+    # in the first place solves the same problem and saves reading it.
 )
 
 # whoz_profile_history — SCD Type 2: every version of every profile, each row valid
@@ -98,11 +94,9 @@ dp.create_auto_cdc_flow(
     keys=["profile_id"],
     sequence_by=F.col("source_last_modified_at"),
     stored_as_scd_type="2",
-    # See the same option on whoz_profiles' flow above — this is the one that actually
-    # failed: [DATATYPE_MISMATCH.INVALID_ORDERING_TYPE] "The <=> does not support
-    # ordering on type VARIANT", from AUTO CDC's SCD2 version-boundary detection trying
-    # to compare payload across consecutive rows for this profile_id.
-    except_column_list=["payload"],
+    # See the note on whoz_profiles' flow above. This SCD2 flow is the one that actually
+    # hit the VARIANT comparison failure, since version-boundary detection diffs
+    # consecutive rows for a profile_id; it is fixed at the source now, not excluded.
 )
 
 
