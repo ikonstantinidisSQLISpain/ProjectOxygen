@@ -82,8 +82,8 @@ erDiagram
     }
 
     collab_status }o -- o{ worker : collabs_with
-    collab_status }o -- o{ department : collabs_with
-    collab_status }o -- o{ service_line : collabs_in
+    collab_status }o -- o| department : collabs_with
+    collab_status }o -- o| service_line : collabs_in
 
     activity {
         STRING type_id PK
