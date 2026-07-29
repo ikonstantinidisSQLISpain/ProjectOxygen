@@ -62,7 +62,7 @@ targets:
     workspace:
       host: https://adb-7405610661645830.10.azuredatabricks.net
     presets:
-      name_prefix: [test]
+      name_prefix: "[test] "
     variables:
       catalog: oxygen_test
       bronze_schema: bronze
