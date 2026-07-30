@@ -203,12 +203,13 @@ The relationsip between each department and each zone.
 
 | Column          | Type    | Description                                                | Contraints | PK/FK |
 |-----------------|---------|------------------------------------------------------------|------------|-------|
-| worker_id       | BIGINT  | Identifier of the worker.                                  |            | PK FK |
-| department_id   | BIGINT  | Indentifier of the department where the worker is working. |            | PK FK |
-| service_line_id | BIGINT  | Identifier of the service line the worker is working on.   |            | PK FK |
-| year            | INT     | Year when this data is measured.                           |            | PK    |
-| month           | TINYINT | Month when this data is measured.                          |            | PK    |
-| status          | STRING  | Status when the data was measured.                         |            |       |
+| worker_id               | BIGINT  | Identifier of the worker.                                  |            | PK FK |
+| department_id           | BIGINT  | Indentifier of the department where the worker is working. |            | PK FK |
+| service_line_id         | BIGINT  | Identifier of the service line the worker is working on.   |            | PK FK |
+| year                    | INT     | Year when this data is measured.                           |            | PK    |
+| month                   | TINYINT | Month when this data is measured.                          |            | PK    |
+| status                  | STRING  | Status when the data was measured.                         |            |       |
+| standard_cost_category  | STRING  | Self explanatory.                                          |            |       |
 
 #### activity
 
@@ -236,9 +237,10 @@ Activity is not an entity you can find in the json but it is something we should
 
 #### leave_report
 
-| Column          | Type   | Description                       | Contraints | PK/FK |
-|-----------------|--------|-----------------------------------|------------|-------|
-| worker_id       | BIGINT | Identifier of the worker.         |            | PK FK |
-| departure_date  | DATE   | Date when the leave is requested. |            | PK    |
-| departure_type  | STRING | Self explanatory.                 |            |       |
-| date_of_receipt | DATE   | Date when the leave was notified. |            |       |
+| Column          | Type   | Description                             | Contraints | PK/FK |
+|-----------------|--------|-----------------------------------------|------------|-------|
+| worker_id       | BIGINT | Identifier of the worker.               |            | PK FK |
+| departure_date  | DATE   | Date when the leave is requested.       |            | PK    |
+| departure_type  | STRING | Self explanatory.                       |            |       |
+| date_of_receipt | DATE   | Date when the leave was notified.       |            |       |
+| user_category   | STRING | Category of worker not in workers data. |            |       |

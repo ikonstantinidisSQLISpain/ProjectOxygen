@@ -1,6 +1,0 @@
-resources:
-  pipeline:
-    name: raw_to_bronze_bu
-    configuration:
-      catalog: ${var.catalog}
-      schema: bronze_corp_struct
