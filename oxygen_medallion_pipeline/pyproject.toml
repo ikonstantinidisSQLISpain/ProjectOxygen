@@ -42,3 +42,7 @@ builtins = ["spark"]
 # import by the exact path production uses, so a wrong prefix fails locally and in CI
 # rather than surviving to a deploy (which is how it was found the first time).
 pythonpath = ["src/whoz_ingestion_etl"]
+testpaths = ["tests"]
+# -ra prints a summary of everything that wasn't a plain pass at the end of the run;
+# --strict-markers turns a typo'd @pytest.mark into an error instead of a silent no-op.
+addopts = "-ra --strict-markers"

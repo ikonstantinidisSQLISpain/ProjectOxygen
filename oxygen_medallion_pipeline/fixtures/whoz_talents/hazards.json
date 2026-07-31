@@ -1,0 +1,137 @@
+[
+  {
+    "id": "hazard-headline-all-null",
+    "federationId": "fed-1",
+    "userId": "u-headline-all-null",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-07-08T13:14:15.706Z",
+    "lastModifiedDate": "2026-02-23T11:28:21.426Z",
+    "profile": {
+      "id": "p-headline-all-null",
+      "talentId": "hazard-headline-all-null",
+      "main": true,
+      "status": "DRAFT",
+      "completionRate": 0,
+      "completionDetails": [],
+      "headline": {
+        "aim": null,
+        "bio": null,
+        "company": null,
+        "internationalMobility": null,
+        "jobTitle": null,
+        "mobilityDate": null,
+        "mobilityDestinations": null,
+        "mobilityNote": null,
+        "nationalMobility": null,
+        "permissionScope": null,
+        "seekingOpportunities": null,
+        "seekingOpportunitiesLastModifiedDate": null
+      }
+    },
+    "history": [],
+    "recruitment": { "stageDates": [], "workflowStepDates": [] }
+  },
+  {
+    "id": "hazard-empty-collections",
+    "federationId": "fed-1",
+    "userId": "u-empty-collections",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-empty-collections",
+      "talentId": "hazard-empty-collections",
+      "main": true,
+      "status": "DRAFT"
+    },
+    "tags": [],
+    "aspirations": [],
+    "maxWorkingHours": [],
+    "sharingDestinations": [],
+    "qualificationIds": [],
+    "customFields": [],
+    "history": [],
+    "recruitment": { "stageDates": [], "workflowStepDates": [] }
+  },
+  {
+    "id": "hazard-collections-absent",
+    "federationId": "fed-1",
+    "userId": "u-collections-absent",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-collections-absent",
+      "talentId": "hazard-collections-absent",
+      "main": true,
+      "status": "DRAFT"
+    }
+  },
+  {
+    "id": "hazard-timestamp-precisions",
+    "federationId": "fed-1",
+    "userId": "u-timestamp-precisions",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-02T03:04:05Z",
+    "lastModifiedDate": "2026-07-01T12:30:45.123Z",
+    "lastConnectionDate": "2026-07-01T12:30:45.123456789Z",
+    "profile": {
+      "id": "p-timestamp-precisions",
+      "talentId": "hazard-timestamp-precisions",
+      "main": true,
+      "status": "DRAFT"
+    },
+    "history": [],
+    "recruitment": { "stageDates": [], "workflowStepDates": [] }
+  },
+  {
+    "id": "hazard-completion-rate-int",
+    "federationId": "fed-1",
+    "userId": "u-completion-rate-int",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-completion-rate-int",
+      "talentId": "hazard-completion-rate-int",
+      "main": true,
+      "status": "VALIDATED",
+      "completionRate": 1,
+      "completionDetails": {
+        "JOB_TITLE": { "satisfied": true, "weight": 1 }
+      }
+    },
+    "history": [],
+    "recruitment": { "stageDates": [], "workflowStepDates": [] }
+  },
+  {
+    "id": "hazard-multiple-workspace-history",
+    "federationId": "fed-1",
+    "userId": "u-multiple-workspace-history",
+    "workspaceId": "ws-3",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "lastConnectionDate": "2025-12-01T08:00:00Z",
+    "profile": {
+      "id": "p-multiple-workspace-history",
+      "talentId": "hazard-multiple-workspace-history",
+      "main": true,
+      "status": "SUBMITTED",
+      "completionRate": 0.9
+    },
+    "history": [
+      { "since": "2024-01-01", "scope": "INTERNAL", "workspaceId": "ws-1" },
+      { "since": "2025-01-01", "scope": "EXTERNAL", "workspaceId": "ws-2" },
+      { "since": "2026-01-01", "scope": "EXTERNAL", "workspaceId": "ws-3" }
+    ],
+    "recruitment": { "stageDates": [], "workflowStepDates": [] }
+  },
+  {
+    "id": "hazard-sparse-record",
+    "federationId": "fed-1",
+    "profile": {
+      "id": "p-sparse-record",
+      "talentId": "hazard-sparse-record"
+    }
+  }
+]

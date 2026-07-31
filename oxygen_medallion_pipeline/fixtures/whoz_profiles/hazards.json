@@ -1,0 +1,132 @@
+[
+  {
+    "id": "hazard-completion-rate-int",
+    "talentId": "t-completion-rate-int",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "completionRate": 1,
+    "completionDetails": {},
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-completion-rate-float",
+    "talentId": "t-completion-rate-float",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "completionRate": 0.425,
+    "completionDetails": {},
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-completion-details-empty-array",
+    "talentId": "t-completion-details-empty-array",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "completionRate": 0,
+    "completionDetails": [],
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-absent-headline",
+    "talentId": "t-absent-headline",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "SUBMITTED",
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-null-headline-fields",
+    "talentId": "t-null-headline-fields",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "headline": {
+      "jobTitle": "Engineer",
+      "aim": null,
+      "nationalMobility": null,
+      "internationalMobility": null,
+      "mobilityDate": null,
+      "mobilityNote": null
+    },
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-sparse-record",
+    "talentId": "t-sparse-record",
+    "federationId": "fed-1",
+    "main": true
+  },
+  {
+    "id": "hazard-timestamp-precisions",
+    "talentId": "t-timestamp-precisions",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "createdDate": "2024-01-02T03:04:05Z",
+    "lastModifiedDate": "2026-07-01T12:30:45.123Z",
+    "lastExplicitUpdate": "2026-07-01T12:30:45.123456789Z",
+    "completionRateLastComputedDate": "2026-07-01T12:30:45.123456Z",
+    "aptitudes": [],
+    "positions": []
+  },
+  {
+    "id": "hazard-extended-year-end-date",
+    "talentId": "t-extended-year-end-date",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "lastModifiedDate": "2026-07-01T00:00:00Z",
+    "aptitudes": [
+      {
+        "id": "apt-int-experience",
+        "profileId": "hazard-extended-year-end-date",
+        "talentId": "t-extended-year-end-date",
+        "name": "SQL",
+        "type": "TECHNICAL",
+        "proficiency": 5,
+        "cumulativeExperience": 12
+      },
+      {
+        "id": "apt-float-experience",
+        "profileId": "hazard-extended-year-end-date",
+        "talentId": "t-extended-year-end-date",
+        "name": "dbt",
+        "type": "TOOL",
+        "proficiency": 3,
+        "cumulativeExperience": 1.75
+      }
+    ],
+    "positions": [
+      {
+        "id": "pos-extended-year",
+        "profileId": "hazard-extended-year-end-date",
+        "isMission": false,
+        "current": false,
+        "title": "Architect",
+        "startDate": "2015-07-31",
+        "endDate": "+22015-07-31",
+        "aptitudeReferences": []
+      }
+    ]
+  }
+]

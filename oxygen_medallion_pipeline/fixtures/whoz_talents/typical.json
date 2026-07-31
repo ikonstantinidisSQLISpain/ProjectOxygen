@@ -1,0 +1,146 @@
+[
+  {
+    "profile": {
+      "id": "668be627644a535ac1d1f5fa",
+      "talentId": "668be62750f9cf5d75f87e63",
+      "versionName": "Main version",
+      "main": true,
+      "federationId": "668be62550f9cf5d75f87e61",
+      "aptitudes": [],
+      "completionDetails": [],
+      "completionRate": 0,
+      "createdBy": "668be625080dd2051b364775",
+      "customFields": [],
+      "educations": [],
+      "functionalDomains": [],
+      "headline": {
+        "aim": null,
+        "bio": null,
+        "company": null,
+        "internationalMobility": null,
+        "jobTitle": null,
+        "mobilityDate": null,
+        "mobilityDestinations": null,
+        "mobilityNote": null,
+        "nationalMobility": null,
+        "permissionScope": null,
+        "seekingOpportunities": null,
+        "seekingOpportunitiesLastModifiedDate": null
+      },
+      "lastExplicitUpdate": "2024-07-08T13:14:15.921Z",
+      "lastExplicitUpdateBy": "668be625080dd2051b364775",
+      "lastModifiedBy": "668c0d6b50f9cf5d75f87eaa",
+      "links": [],
+      "mainSkills": [],
+      "permissionScope": "SECRET",
+      "positions": [],
+      "qualificationIds": [],
+      "removed": false,
+      "secondarySkills": [],
+      "status": "DRAFT",
+      "targetFunctionalDomains": [],
+      "unclassifiedSkills": []
+    },
+    "id": "668be62750f9cf5d75f87e63",
+    "federationId": "668be62550f9cf5d75f87e61",
+    "userId": "668be625080dd2051b364775",
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2024-07-08T13:14:15.706Z",
+    "lastModifiedBy": "668c035d50f9cf5d75f87ea0",
+    "removed": false,
+    "lastModifiedDate": "2026-02-23T11:28:21.426Z",
+    "lastConnectionDate": "2025-01-21T15:05:20.930Z",
+    "permissionScope": "SECRET",
+    "tags": [],
+    "aspirations": [],
+    "maxWorkingHours": [],
+    "sharingDestinations": [],
+    "history": [
+      {
+        "since": "2024-07-08",
+        "scope": "EXTERNAL",
+        "workspaceId": "668be62650f9cf5d75f87e62"
+      }
+    ],
+    "recruitment": {
+      "stageDates": [],
+      "workflowStepDates": []
+    },
+    "timeEntryPreferredUnit": "DAY",
+    "qualificationIds": [],
+    "customFields": [],
+    "freelyAssignable": false,
+    "workspaceId": "668be62650f9cf5d75f87e62",
+    "endUser": true
+  },
+  {
+    "profile": {
+      "id": "7791ac38755b646bd2e2a60b",
+      "talentId": "7791ac3861a0d06e86f98f74",
+      "versionName": "Main version",
+      "main": true,
+      "federationId": "668be62550f9cf5d75f87e61",
+      "aptitudes": [],
+      "completionDetails": {
+        "JOB_TITLE": { "satisfied": true, "weight": 1 },
+        "BIO_MIN_LENGTH": { "satisfied": false, "weight": 3 }
+      },
+      "completionRate": 0.42,
+      "customFields": [],
+      "educations": [],
+      "headline": {
+        "aim": null,
+        "bio": "Fifteen years across logistics and retail supply chains.",
+        "company": "Northwind Logistics 4k2p",
+        "jobTitle": "Supply Chain Analyst",
+        "permissionScope": "SECRET",
+        "seekingOpportunities": null
+      },
+      "links": [],
+      "mainSkills": [],
+      "permissionScope": "SECRET",
+      "positions": [],
+      "qualificationIds": [],
+      "removed": false,
+      "secondarySkills": [],
+      "status": "VALIDATED",
+      "unclassifiedSkills": []
+    },
+    "id": "7791ac3861a0d06e86f98f74",
+    "federationId": "668be62550f9cf5d75f87e61",
+    "userId": "7791ac36191ee3162c475886",
+    "createdBy": "7791ac36191ee3162c475886",
+    "createdDate": "2025-03-14T09:22:41.118Z",
+    "lastModifiedBy": "7791ac36191ee3162c475886",
+    "removed": false,
+    "lastModifiedDate": "2026-06-30T17:04:02.777Z",
+    "lastConnectionDate": "2026-06-30T16:58:11.204Z",
+    "permissionScope": "SECRET",
+    "tags": [],
+    "aspirations": [],
+    "maxWorkingHours": [],
+    "sharingDestinations": [],
+    "history": [
+      {
+        "since": "2025-03-14",
+        "scope": "INTERNAL",
+        "workspaceId": "668be62650f9cf5d75f87e62"
+      },
+      {
+        "since": "2026-01-05",
+        "scope": "EXTERNAL",
+        "workspaceId": "7791ac3755b1c9084d3ea915"
+      }
+    ],
+    "recruitment": {
+      "stageDates": [],
+      "workflowStepDates": []
+    },
+    "timeEntryPreferredUnit": "HOUR",
+    "qualificationIds": ["7791ac39a0e4f7128b6d5c03"],
+    "customFields": [],
+    "freelyAssignable": false,
+    "workspaceId": "7791ac3755b1c9084d3ea915",
+    "endUser": true
+  }
+]

@@ -69,6 +69,22 @@ PROFILE_COLUMNS = """
 """
 
 
+# The schema of silver.whoz_profile_history: the same columns plus AUTO CDC's SCD2
+# validity window. Built here rather than concatenated at the call site in
+# silver_whoz_profile.py so that tests/test_schema_contract.py checks the real string the
+# pipeline uses, not a copy of it. Both columns must be TIMESTAMP to match the flow's
+# sequence_by (source_last_modified_at) — confirmed against the docs, not guessed; get it
+# wrong and the SCD2 flow fails to attach at update time, which `databricks bundle
+# validate` does not catch.
+PROFILE_HISTORY_COLUMNS = (
+    PROFILE_COLUMNS
+    + """,
+    __START_AT TIMESTAMP COMMENT 'Start of this version''s validity window (SCD2, added by AUTO CDC)',
+    __END_AT TIMESTAMP COMMENT 'End of this version''s validity window; NULL means still current (SCD2, added by AUTO CDC)'
+"""
+)
+
+
 def vg(path, target_type):
     """try_variant_get on the payload column — NULL on missing path or bad cast."""
     return F.try_variant_get("payload", path, target_type)

@@ -13,6 +13,17 @@
 
 from pyspark import pipelines as dp
 
+# Quality rules are defined as data in utilities/expectations.py rather than inline in the
+# decorators below, so that tests/test_expectations.py can check them — see that module's
+# header for the reasoning.
+from utilities.expectations import (
+    APTITUDE_MUST_HOLD,
+    APTITUDE_REF_MUST_HOLD,
+    APTITUDE_SHOULD_HOLD,
+    POSITION_MUST_HOLD,
+    POSITION_SHOULD_HOLD,
+)
+
 # See bronze_whoz_profiles.py — resources/whoz_ingestion_etl.pipeline.yml is the only
 # source of truth for these, so no fallback value here.
 CATALOG = spark.conf.get("whoz.catalog")
@@ -30,8 +41,8 @@ BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "aptitude_type"],
 )
-@dp.expect_or_drop("aptitude_id_not_null", "aptitude_id IS NOT NULL")
-@dp.expect("proficiency_in_range", "proficiency IS NULL OR proficiency BETWEEN 0 AND 5")
+@dp.expect_all_or_drop(APTITUDE_MUST_HOLD)
+@dp.expect_all(APTITUDE_SHOULD_HOLD)
 def whoz_profile_aptitudes():
     return spark.sql(f"""
         SELECT
@@ -70,11 +81,8 @@ def whoz_profile_aptitudes():
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "start_date"],
 )
-@dp.expect_or_drop("position_id_not_null", "position_id IS NOT NULL")
-# Catches the "+22015-07-31" style values: end_date comes back NULL from the cast
-# while the raw string is still there. Warn, don't drop.
-@dp.expect("end_date_parsed", "end_date_raw IS NULL OR end_date IS NOT NULL")
-@dp.expect("dates_ordered", "start_date IS NULL OR end_date IS NULL OR end_date >= start_date")
+@dp.expect_all_or_drop(POSITION_MUST_HOLD)
+@dp.expect_all(POSITION_SHOULD_HOLD)
 def whoz_profile_positions():
     return spark.sql(f"""
         SELECT
@@ -117,7 +125,7 @@ def whoz_profile_positions():
     table_properties={"quality": "silver"},
     cluster_by=["profile_id", "position_id"],
 )
-@dp.expect_or_drop("keys_not_null", "position_id IS NOT NULL AND aptitude_id IS NOT NULL")
+@dp.expect_all_or_drop(APTITUDE_REF_MUST_HOLD)
 def whoz_position_aptitude_refs():
     return spark.sql(f"""
         SELECT
