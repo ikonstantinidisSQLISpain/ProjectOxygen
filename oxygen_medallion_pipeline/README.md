@@ -15,14 +15,20 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 
 * `src/`: Python source code for this project.
   * `src/whoz_ingestion/`: Shared Python code for the Whoz source, used by its jobs/pipelines.
-  * `src/whoz_ingestion_etl/transformations/`: the `@dp.table`-decorated bronze/silver
-    dataset definitions of the `whoz_ingestion_etl` pipeline.
+  * `src/whoz_ingestion_etl/transformations/`: the `@dp.table`-decorated dataset
+    definitions of the `whoz_ingestion_etl` pipeline, in `bronze/` and `silver/`
+    subfolders — layer-first, so a future `gold/` that joins across entities has a peer
+    folder to live in.
   * `src/whoz_ingestion_etl/utilities/`: the pure DataFrame-in/DataFrame-out shaping
-    logic those datasets call — kept separate so it's unit-testable, see Testing below.
+    logic those datasets call (`shaping/<entity>.py`), plus `expectations.py`, the data
+    quality rules — both kept out of `transformations/` so they're testable, see Testing
+    below.
 * `resources/`:  Resource configurations (jobs, pipelines, etc.), one pair per source.
-* `docs/`: Source data model analysis — see `docs/whoz_profile_data_model.md`.
-* `tests/`: Unit tests for the shared Python code.
-* `fixtures/`: Fixtures for data sets (primarily used for testing).
+* `docs/`: Source data model analysis (`docs/whoz_profile_data_model.md`) and the
+  step-by-step runbook for ingesting a new export (`docs/adding_a_source_entity.md`).
+* `tests/`: The test suite — one folder per layer (`layer1_shaping/`, `layer2_contract/`,
+  `layer3_rules/`), entity in the filename. See Testing below.
+* `fixtures/`: Sample source records the tests run against, one folder per source entity.
 
 ## The Whoz profile pipeline
 
@@ -39,10 +45,15 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 | silver | `silver.whoz_profile_positions` | one row per job/mission |
 | silver | `silver.whoz_position_aptitude_refs` | (position, aptitude) bridge |
 | silver | `silver.whoz_profile_skill_ratings` | legacy `skillRatings` — verify before use |
+| bronze | `bronze.whoz_talents` | one row per talent, full JSON (incl. the nested profile) in a VARIANT `payload` |
+| bronze | `bronze.whoz_talents_payload_shapes` | distinct key set × profile container type (drift monitor) |
+| silver | `silver.whoz_talents` | one row per talent, **current state only** — AUTO CDC (SCD1) upsert by `talent_id` |
+| silver | `silver.whoz_talent_versions` | one row per (talent, version), `__START_AT`/`__END_AT` validity — AUTO CDC (SCD2) |
+| silver | `silver.whoz_talent_workspace_history` | (talent, workspace membership period), from the source's `history[]` |
 
 `bronze`/`silver` schema names are literal and identical in **every** target — the
 isolation boundary is the catalog, not the schema (see "Environments" below). Every
-table name in `transformations/*.py` is built from `CATALOG`/`BRONZE_SCHEMA`/
+table name in `transformations/**/*.py` is built from `CATALOG`/`BRONZE_SCHEMA`/
 `SILVER_SCHEMA` module-level constants (read from pipeline config via `spark.conf.get`),
 never hardcoded.
 
@@ -140,38 +151,180 @@ you, since that's what `local`'s catalog variable is built from.
 
 ## Testing
 
-Tests run against a **local, open-source PySpark session** — no Databricks workspace,
-no credentials, no live cluster. `tests/conftest.py` starts a plain `SparkSession` in
-local mode. This works because Apache Spark 4.0 open-sourced the `VARIANT` type,
-`try_variant_get` and `variant_explode` from Databricks Runtime, and that's all the
-tested logic uses. You need a local JDK 17+ on `PATH` (PySpark embeds a JVM); nothing
-else.
+```
+$ uv run pytest
+```
 
-**Why the transformations aren't tested directly.** `pyspark.pipelines` (imported as
-`dp` in every file under `transformations/`) only exists inside a running Lakeflow
-pipeline — importing a `transformations/*.py` file from a plain pytest process raises
-`ImportError: cannot import name 'pipelines' from 'pyspark'`. So the actual row-shaping
-logic (the `.select(...)` / `try_variant_get` calls) lives in `utilities/`, which has no
-`pipelines` dependency at all and takes/returns plain DataFrames. Each `@dp.table`
-function in `transformations/` is a thin wrapper: read the upstream table, call the
-`utilities` function, return the result. Test the `utilities` function; don't try to
-call the `@dp.table` function.
+Tests run against a **local, open-source PySpark session** — no Databricks workspace, no
+credentials, no live cluster. `tests/conftest.py` starts a plain `SparkSession` in local
+mode. This works because Apache Spark 4.0 open-sourced the `VARIANT` type,
+`try_variant_get` and `variant_explode` from Databricks Runtime, and that's all the tested
+logic uses. You need a local JDK 17+ on `PATH` (PySpark embeds a JVM); nothing else.
 
-**How to build test input.** Build the whole DataFrame in one
-`spark.createDataFrame(...).select(...)` call — see `_bronze_df` in
-`tests/test_silver_whoz_profile.py`. Do not build rows one at a time via `.first()` and
-reassemble them into a list of `Row`s: round-tripping a `VARIANT` value through a local
-`Row` loses its type, and Spark re-infers it as the physical
-`STRUCT<metadata: BINARY, value: BINARY>` layout instead — `try_variant_get` then fails
-with `DATATYPE_MISMATCH` even though the JSON is fine.
+### Three layers, three questions
 
-**What's covered vs. not, today.** `test_silver_whoz_profile.py` covers `shape_profile()`
-(the row-shaping logic behind `silver.whoz_profiles`/`silver.whoz_profile_history`) only,
-against the type hazards documented in `docs/whoz_profile_data_model.md`
-(int/float `completionRate`, absent-vs-null `headline`). The other tables in
-`transformations/` don't have a `utilities` counterpart yet — extending the pattern
-(pulling their `.select(...)` / `spark.sql(...)` bodies into `utilities/`, one module per
-table) is the natural next step whenever they need a test.
+Each layer answers one question, and the question is the reason the layer exists. They are
+independent — a change usually only touches one. Each layer is a folder, and the entity is
+in the filename, so every layer has the same shape and adding an entity means adding one
+file per layer rather than editing shared ones.
+
+| Layer | Folder and files | Question | What breaks if it's missing |
+|---|---|---|---|
+| 1. Shaping | `tests/layer1_shaping/` — `test_profile_shaping.py`, `test_talent_shaping.py` | Does the transformation code do what we intended? | A parsing bug ships. Caught by every other test suite in the world; the ordinary one. |
+| 2. Schema contract | `tests/layer2_contract/` — `test_profile_contract.py`, `test_talent_contract.py` | Does the declared schema still describe what the code produces? | `PROFILE_COLUMNS` is a raw DDL **string**. `py_compile`, `ruff`, `pytest` and `databricks bundle validate` all pass green on a schema that cannot even parse — one unescaped apostrophe in a `COMMENT` does it. Only a live pipeline update would notice. |
+| 3. Data quality rules | `tests/layer3_rules/` — `test_rule_hygiene.py`, plus `test_profile_rules.py`, `test_talent_rules.py` | Are the quality rules themselves right? | Same problem, worse consequence. A `@dp.expect` predicate is a string too, so a rule naming a column that doesn't exist, or one that catches nothing, reports **100% pass forever** and nobody looks again. |
+
+`tests/conftest.py` and `tests/helpers.py` stay at the root of `tests/`: they are shared by
+all three layers and belong to none of them.
+
+Layer 3 is split two ways rather than three, and the split is the point.
+`test_rule_hygiene.py` is *cross-cutting*: it iterates `ALL_RULE_SETS` and checks every
+rule in the project for parseability, snake_case naming, project-wide name uniqueness and
+drop-rule policy. Nobody edits it to add an entity — registering your rule sets is what
+makes it cover them. The per-entity `test_*_rules.py` files are the *behavioural* half:
+your rules pass clean fixtures and fire on the records built to break them. Only you can
+write that half.
+
+Layer 3 is the one people skip, and it's the reason `utilities/expectations.py` exists —
+see "Data quality rules" below.
+
+### Fixtures
+
+`fixtures/<entity>/*.json` — one folder per source entity, each file a JSON **array** of
+source objects in exactly the shape Whoz exports, so a fixture can be a trimmed copy of real
+records without reformatting. The three file names are a convention, and the convention is
+the contract:
+
+| File | Contains | Every rule must |
+|---|---|---|
+| `typical.json` | ordinary, fully-populated records, realistic 24-hex ids | **pass** |
+| `hazards.json` | one record per documented type hazard — polymorphic fields, absent vs. null vs. all-null objects, every timestamp precision, near-empty records | **pass** — awkward is not invalid |
+| `violations.json` | records designed to trip the quality rules | **fire**, with exactly the expected counts |
+
+Records in `hazards.json`/`violations.json` use descriptive ids (`hazard-absent-headline`,
+`violation-profile-as-array`) rather than realistic ObjectIds, so assertions read as the
+thing being tested.
+
+Per entity, `conftest.py` gives you a file loader and an inline builder:
+
+```python
+def test_something(talent_fixture):        # a stored fixture file
+    result = shape_talent(talent_fixture("hazards"))
+
+def test_one_thing(talent_bronze):         # inline, for a pointed case
+    result = shape_talent(talent_bronze([{"id": "t1", "profile": {"id": "p1"}}]))
+```
+
+Use a file when the records describe the *source* ("this is what Whoz sends"); inline when
+they describe the *test* ("one field set, to isolate one behaviour").
+
+**Never build `VARIANT` input by hand.** Use the fixtures. `bronze_of` is the only place in
+the suite that constructs a `VARIANT` column, because getting it wrong is easy and the
+failure is baffling: round-trip a `VARIANT` value through a local `Row` (via `.first()`, or
+by collecting and re-creating) and Spark loses the logical type, re-infers the physical
+`STRUCT<metadata: BINARY, value: BINARY>` layout, and `try_variant_get` fails with
+`DATATYPE_MISMATCH` even though the JSON is perfectly fine.
+
+**Never assert on a collected timestamp.** Put the DataFrame through
+`helpers.to_utc_strings()` first. `conftest.py` pins `spark.sql.session.timeZone` to UTC,
+but that governs Spark-side rendering only — `df.collect()` converts `TIMESTAMP`s to Python
+datetimes using the **JVM default** zone, which the setting doesn't reach. Measured on this
+project: the same value reads `04:04:05` on a laptop in Europe/Madrid and `03:04:05` on
+GitHub's UTC runners, so the assertion passes locally and fails in CI.
+
+### Data quality rules
+
+Every rule the pipeline enforces lives in `src/whoz_ingestion_etl/utilities/expectations.py`
+as a `{name: SQL predicate}` dict, not as a decorator argument. Two things read those dicts:
+the pipeline, via `@dp.expect_all` / `@dp.expect_all_or_drop`, and the test suite. That
+indirection is the whole point — the module imports nothing, so a test can import it
+without a Spark session and evaluate every predicate against real DataFrame output.
+
+The suffix is a contract, not a label:
+
+* `*_MUST_HOLD` → `@dp.expect_all_or_drop`. Violating rows are **dropped**. Only for a row
+  that is unusable — in practice, a null primary key. `test_drop_rules_only_ever_guard_a_key`
+  enforces this, because dropping rows is invisible: the pipeline reports a healthy run and
+  the data is simply not there.
+* `*_SHOULD_HOLD` → `@dp.expect_all`. Violating rows are **kept and counted**. Everything
+  else: assumptions about the source that hold today and should raise an eyebrow, not delete
+  data, if they ever stop.
+
+**To add a rule:** add one line to the right dict, and one record to
+`fixtures/whoz_profiles/violations.json` that trips it. The hygiene tests pick the rule up
+automatically; `test_every_profile_rule_is_covered_by_the_violations_fixture` fails until the
+fixture record exists, so a rule can't be added without evidence that it works.
+
+**On DQX.** Databricks Labs' [DQX](https://databrickslabs.github.io/dqx/) solves the same
+problem as this layer, with a quarantine-table pattern and a data-health dashboard on top.
+It's worth a look if quality reporting grows beyond what Lakeflow's built-in expectation
+metrics give you. It is not an alternative to layers 1 and 2 — DQX validates *data* at
+runtime, pytest validates *code* before merge. The rules-as-data shape here is deliberately
+close to DQX's own, so moving is additive rather than a rewrite.
+
+### Adding a source entity
+
+The unit of extension is the **entity**, and the seam is `utilities/`. Everything generic
+comes free: `tests/helpers.py` is entity-agnostic, and the hygiene tests in
+`tests/layer3_rules/test_rule_hygiene.py` iterate `ALL_RULE_SETS`, so registering your rules
+is enough to have every one of them checked for parseability, snake_case naming,
+project-wide name uniqueness and drop-rule policy. `whoz_talents` was added this way; copy
+it — literally, since the per-entity test files are one per layer and there is no shared
+test file to append to.
+
+The seven headline steps are below. **`docs/adding_a_source_entity.md` is the full
+checklist** — what each file must contain, which test catches each mistake, and the two
+things nothing catches.
+
+1. **`fixtures/<entity>/{typical,hazards,violations}.json`** — real records, trimmed.
+2. **`conftest.py`** — one entry in `BRONZE_KEYS` (the identity columns and their JSON
+   paths), one in `SOURCE_FILES`, and two one-line fixtures at the bottom.
+3. **`utilities/shaping/<entity>.py`** — `<ENTITY>_COLUMNS` (DDL), `<ENTITY>_HISTORY_COLUMNS`
+   if it gets an SCD2 table, and `shape_<entity>(bronze) -> DataFrame`. No `pyspark.pipelines`
+   import, ever — that's what keeps it testable.
+4. **`utilities/expectations.py`** — `<ENTITY>_MUST_HOLD` / `<ENTITY>_SHOULD_HOLD`, both
+   registered in `ALL_RULE_SETS`. Rule names must be unique project-wide. The one shared
+   file you still edit, and deliberately so — see the doc for why.
+5. **`tests/layer1_shaping/test_<entity>_shaping.py`** — one test per hazard.
+6. **`tests/layer2_contract/test_<entity>_contract.py`** (three tests) and
+   **`tests/layer3_rules/test_<entity>_rules.py`** (three tests) — both **new files**,
+   copied from the talent pair. `test_rule_hygiene.py` you never touch.
+7. **`transformations/bronze/<entity>.py` + `silver/<entity>.py`** — thin wrappers, plus the
+   pipeline `configuration` entries for the source path and schema location. The bronze
+   file's `try_variant_get` key paths must match `BRONZE_KEYS`, or the tests build input by
+   a different route than production reads it.
+
+The talent entity is worth reading as the worked example, particularly
+`utilities/shaping/talent.py`'s header: it documents *what it deliberately does not model*
+(the nested profile object) and why, which is the kind of decision that is invisible six
+months later.
+
+### Why the transformations aren't tested directly
+
+`pyspark.pipelines` (imported as `dp` in every file under `transformations/`) is only fully
+present inside a running Lakeflow pipeline: the expectation decorators don't exist in
+open-source PySpark, and the module-level `spark.conf.get` calls fail with no pipeline
+configuration. So the row-shaping logic lives in `utilities/`, which has no `pipelines`
+dependency at all and takes/returns plain DataFrames. Each `@dp.table` function is a thin
+wrapper: read the upstream table, call the `utilities` function, return the result. Test the
+`utilities` function; don't try to call the `@dp.table` one.
+
+### What's covered today, and the next step
+
+Covered, at all three layers, resolved against real DataFrame output so a typo'd column name
+in a rule fails locally:
+
+* `shape_profile()` → `silver.whoz_profiles`, `silver.whoz_profile_history`
+* `shape_talent()` → `silver.whoz_talents`, `silver.whoz_talent_versions`
+
+Not yet: the child tables (`whoz_profile_aptitudes`, `whoz_profile_positions`,
+`whoz_position_aptitude_refs`, `whoz_profile_skill_ratings`, `whoz_profile_completion_rules`,
+`whoz_talent_workspace_history`). Their `spark.sql(...)` bodies still sit inline in
+`transformations/silver/`, so their rules get hygiene checks only — a rule naming a column
+that doesn't exist on those tables would still slip through. Pulling those bodies into
+`utilities/shaping/` the way `shaping/profile.py` and `shaping/talent.py` were done is the
+one change that closes it; the tests to add afterwards are already sketched in
+`tests/layer3_rules/test_rule_hygiene.py`'s header.
 
 ## CI/CD
 

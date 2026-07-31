@@ -1,0 +1,38 @@
+[
+  {
+    "id": null,
+    "talentId": "t-null-profile-id",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "lastModifiedDate": "2026-07-01T00:00:00Z"
+  },
+  {
+    "id": "violation-null-talent-id",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "lastModifiedDate": "2026-07-01T00:00:00Z"
+  },
+  {
+    "id": "violation-not-main-version",
+    "talentId": "t-not-main-version",
+    "federationId": "fed-1",
+    "versionName": "Version 2",
+    "main": false,
+    "status": "DRAFT",
+    "lastModifiedDate": "2026-07-01T00:00:00Z"
+  },
+  {
+    "id": "violation-completion-rate-as-percentage",
+    "talentId": "t-completion-rate-as-percentage",
+    "federationId": "fed-1",
+    "versionName": "Main version",
+    "main": true,
+    "status": "DRAFT",
+    "completionRate": 68,
+    "lastModifiedDate": "2026-07-01T00:00:00Z"
+  }
+]

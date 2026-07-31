@@ -7,7 +7,7 @@
 # fails to even collect. Keeping shaping logic here, with only plain pyspark.sql
 # imports, is what makes it unit-testable with a plain SparkSession.
 #
-# silver_whoz_profile.py imports shape_profile() and wraps it with @dp.table, and
+# silver/whoz_profile.py imports shape_profile() and wraps it with @dp.table, and
 # imports PROFILE_COLUMNS as the declared schema of the tables it writes.
 # =====================================================================================
 
@@ -18,9 +18,9 @@ from pyspark.sql import functions as F
 # here, next to shape_profile(), because the two must agree column-for-column and
 # type-for-type — keeping them in one file means a change to one puts the other right
 # under your eyes. It is also why this constant is here rather than in
-# silver_whoz_profile.py: that module imports pyspark.pipelines and so cannot be
+# silver/whoz_profile.py: that module imports pyspark.pipelines and so cannot be
 # imported by a test, while this one can, which is what lets
-# tests/test_silver_whoz_profile.py both parse this DDL and diff it against
+# tests/layer2_contract/test_profile_contract.py both parse this DDL and diff it against
 # shape_profile()'s real output. A raw SQL string is unavoidable (it is what
 # create_streaming_table's schema= takes) and is unforgiving: a bare apostrophe inside
 # a COMMENT ends the string literal early and the whole schema fails to parse, which
@@ -67,6 +67,22 @@ PROFILE_COLUMNS = """
     source_file STRING COMMENT 'Bronze lineage: which landed file this profile version came from',
     ingested_at TIMESTAMP COMMENT 'Bronze lineage: when this snapshot was ingested, not when Whoz generated it'
 """
+
+
+# The schema of silver.whoz_profile_history: the same columns plus AUTO CDC's SCD2
+# validity window. Built here rather than concatenated at the call site in
+# silver/whoz_profile.py so that tests/layer2_contract/test_profile_contract.py checks the
+# real string the pipeline uses, not a copy of it. Both columns must be TIMESTAMP to match
+# the flow's sequence_by (source_last_modified_at) — confirmed against the docs, not
+# guessed; get it wrong and the SCD2 flow fails to attach at update time, which
+# `databricks bundle validate` does not catch.
+PROFILE_HISTORY_COLUMNS = (
+    PROFILE_COLUMNS
+    + """,
+    __START_AT TIMESTAMP COMMENT 'Start of this version''s validity window (SCD2, added by AUTO CDC)',
+    __END_AT TIMESTAMP COMMENT 'End of this version''s validity window; NULL means still current (SCD2, added by AUTO CDC)'
+"""
+)
 
 
 def vg(path, target_type):

@@ -1,0 +1,93 @@
+[
+  {
+    "id": null,
+    "federationId": "fed-1",
+    "userId": "u-null-talent-id",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-null-talent-id",
+      "main": true,
+      "status": "DRAFT"
+    }
+  },
+  {
+    "id": "violation-no-profile",
+    "federationId": "fed-1",
+    "userId": "u-no-profile",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "violation-profile-as-array",
+    "federationId": "fed-1",
+    "userId": "u-profile-as-array",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": [
+      {
+        "id": "p-array-main",
+        "talentId": "violation-profile-as-array",
+        "versionName": "Main version",
+        "main": true,
+        "status": "VALIDATED",
+        "completionRate": 0.7
+      },
+      {
+        "id": "p-array-second",
+        "talentId": "violation-profile-as-array",
+        "versionName": "Version 2",
+        "main": false,
+        "status": "DRAFT",
+        "completionRate": 0.2
+      }
+    ]
+  },
+  {
+    "id": "violation-embedded-talent-id-disagrees",
+    "federationId": "fed-1",
+    "userId": "u-embedded-disagrees",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-embedded-disagrees",
+      "talentId": "some-other-talent-entirely",
+      "main": true,
+      "status": "DRAFT"
+    }
+  },
+  {
+    "id": "violation-completion-rate-as-percentage",
+    "federationId": "fed-1",
+    "userId": "u-completion-rate-percentage",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-01-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "profile": {
+      "id": "p-completion-rate-percentage",
+      "talentId": "violation-completion-rate-as-percentage",
+      "main": true,
+      "status": "DRAFT",
+      "completionRate": 68
+    }
+  },
+  {
+    "id": "violation-connected-before-created",
+    "federationId": "fed-1",
+    "userId": "u-connected-before-created",
+    "workspaceId": "ws-1",
+    "createdDate": "2024-06-01T00:00:00Z",
+    "lastModifiedDate": "2026-01-01T00:00:00Z",
+    "lastConnectionDate": "2023-01-15T09:00:00Z",
+    "profile": {
+      "id": "p-connected-before-created",
+      "talentId": "violation-connected-before-created",
+      "main": true,
+      "status": "DRAFT"
+    }
+  }
+]

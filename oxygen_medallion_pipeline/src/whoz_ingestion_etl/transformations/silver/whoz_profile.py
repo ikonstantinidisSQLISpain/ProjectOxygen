@@ -2,7 +2,7 @@
 # SILVER — silver.whoz_profiles / silver.whoz_profile_history
 #
 # Profile-level (1 row per profile) flattening of the bronze VARIANT payload.
-# Child collections are handled in silver_whoz_profile_children.py.
+# Child collections are handled in silver/whoz_profile_children.py.
 #
 # Every extraction uses try_variant_get so that a bad value nulls one column instead
 # of failing the update. Collections stay as VARIANT here — they are unnested in the
@@ -16,7 +16,8 @@ from pyspark.sql import functions as F
 # src/whoz_ingestion_etl, so that folder itself is on sys.path at runtime, not its
 # parent. tests/ import by this same path (see pyproject.toml's pythonpath) so a wrong
 # prefix here fails the test suite too, instead of only at deploy time.
-from utilities.profile_shaping import PROFILE_COLUMNS, shape_profile
+from utilities.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
+from utilities.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 CATALOG = spark.conf.get("whoz.catalog")
 BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
@@ -26,17 +27,18 @@ BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
 # -------------------------------------------------------------------------------------
 # Shaped, validated rows off bronze — pipeline-scoped, materializes nothing itself.
-# Whoz re-lands a full snapshot under each dated export (see bronze_whoz_profiles.py),
+# Whoz re-lands a full snapshot under each dated export (see bronze/whoz_profiles.py),
 # so the same profile_id shows up once per snapshot here. Both AUTO CDC flows below
 # read this same view and turn that into an upsert, keyed by profile_id. A temporary
 # view is never a catalog object, so it keeps its bare name — nothing to qualify.
 # -------------------------------------------------------------------------------------
+# Both rule sets are defined in utilities/expectations.py, not inline here: that module
+# imports nothing, so tests/layer3_rules/test_profile_rules.py can import it and evaluate
+# every predicate against real shape_profile() output. A rule naming a column that does not
+# exist then fails in pytest instead of passing validate and firing on nothing forever.
 @dp.temporary_view
-@dp.expect_or_drop("profile_id_not_null", "profile_id IS NOT NULL")
-@dp.expect("talent_id_not_null", "talent_id IS NOT NULL")
-# The source is unversioned in this extract (main=true everywhere), but the model
-# allows several versions per talent — this warns if that ever starts happening.
-@dp.expect("is_main_version", "is_main_version = true")
+@dp.expect_all_or_drop(PROFILE_MUST_HOLD)
+@dp.expect_all(PROFILE_SHOULD_HOLD)
 def whoz_profile_shaped():
     return shape_profile(spark.readStream.table(BRONZE_TABLE))
 
@@ -78,13 +80,11 @@ dp.create_streaming_table(
         "__START_AT/__END_AT mark each version's validity window; NULL __END_AT is current. "
         "No 'payload' column: query bronze.whoz_profiles by profile_id for the raw JSON."
     ),
-    # SCD2 requires __START_AT/__END_AT in an explicit schema, typed to match
-    # sequence_by (source_last_modified_at, TIMESTAMP) — confirmed against the docs
-    # before writing this, not guessed; get it wrong and the flow below fails to attach.
-    schema=PROFILE_COLUMNS + """,
-    __START_AT TIMESTAMP COMMENT 'Start of this version''s validity window (SCD2, added by AUTO CDC)',
-    __END_AT TIMESTAMP COMMENT 'End of this version''s validity window; NULL means still current (SCD2, added by AUTO CDC)'
-""",
+    # SCD2 requires __START_AT/__END_AT in an explicit schema, typed to match sequence_by
+    # (source_last_modified_at, TIMESTAMP). Both the concatenation and that type rule live
+    # in PROFILE_HISTORY_COLUMNS so tests/layer2_contract/test_profile_contract.py checks
+    # this exact string.
+    schema=PROFILE_HISTORY_COLUMNS,
     table_properties={"quality": "silver"},
     cluster_by=["profile_id"],
 )
