@@ -14,8 +14,10 @@
 from pyspark import pipelines as dp
 
 # Quality rules are defined as data in utilities/expectations.py rather than inline in the
-# decorators below, so that tests/test_expectations.py can check them — see that module's
-# header for the reasoning.
+# decorators below, so that tests/layer3_rules/test_rule_hygiene.py can check them — see
+# that module's header for the reasoning. Hygiene is all these child-table rules get: their
+# SQL bodies are inline below rather than in utilities/, so there is no local DataFrame to
+# resolve their predicates against, and they have no per-entity behaviour file.
 from utilities.expectations import (
     APTITUDE_MUST_HOLD,
     APTITUDE_REF_MUST_HOLD,
@@ -24,7 +26,7 @@ from utilities.expectations import (
     POSITION_SHOULD_HOLD,
 )
 
-# See bronze_whoz_profiles.py — resources/whoz_ingestion_etl.pipeline.yml is the only
+# See bronze/whoz_profiles.py — resources/whoz_ingestion_etl.pipeline.yml is the only
 # source of truth for these, so no fallback value here.
 CATALOG = spark.conf.get("whoz.catalog")
 BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")

@@ -4,14 +4,14 @@ Unit tests for shape_talent(), the bronze -> silver row shaping behind
 silver.whoz_talents and silver.whoz_talent_versions.
 
 The talent export nests a whole profile object under `profile`. shape_talent deliberately
-does not re-model it — see utilities/talent_shaping.py's header — so most of what these
+does not re-model it — see utilities/shaping/talent.py's header — so most of what these
 tests pin down is the *boundary*: which profile fields are lifted, what happens when the
 nesting isn't the shape we assumed, and that the talent's own attributes survive intact.
 """
 
 from helpers import to_utc_strings
 from pyspark.sql import DataFrame
-from utilities.talent_shaping import shape_talent
+from utilities.shaping.talent import shape_talent
 
 
 def by_talent_id(df: DataFrame) -> dict:
@@ -79,7 +79,7 @@ def test_several_profiles_null_the_profile_columns_and_are_detected(talent_fixtu
     #
     # This test pins that real behaviour rather than an aspiration, so it documents what
     # actually happens today, and it proves the sensor sees it. The profile_is_not_an_array
-    # expectation is what turns the sensor into an alert (tests/test_expectations.py).
+    # expectation is what turns the sensor into an alert (tests/layer3_rules/test_talent_rules.py).
     row = by_talent_id(shape_talent(talent_fixture("violations")))["violation-profile-as-array"]
 
     assert row["profile_container_type"] == "ARRAY"

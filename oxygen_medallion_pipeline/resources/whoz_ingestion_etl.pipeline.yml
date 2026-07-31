@@ -6,7 +6,7 @@ resources:
       name: whoz_ingestion_etl
       catalog: ${var.catalog}
       # Fallback only — every table gets its own explicit bronze./silver.-qualified
-      # name in the Python source (see silver_whoz_profile.py etc), so this rarely
+      # name in the Python source (see transformations/silver/whoz_profile.py etc), so this rarely
       # actually applies to anything.
       schema: ${var.bronze_schema}
       serverless: true
@@ -29,7 +29,7 @@ resources:
         whoz.profiles.source_path: /Volumes/oxygen_dev/landing/source/
         whoz.profiles.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_profiles_schema
         # Talent export. Same shared landing volume, different filename glob (see
-        # FILE_NAME_GLOB in bronze_whoz_talents.py), so the two Auto Loader streams don't
+        # FILE_NAME_GLOB in transformations/bronze/whoz_talents.py), so the two Auto Loader streams don't
         # see each other's files. Its own schemaLocation — two streams must never share a
         # checkpoint directory.
         #

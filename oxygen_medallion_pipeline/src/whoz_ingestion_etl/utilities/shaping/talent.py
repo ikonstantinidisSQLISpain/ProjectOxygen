@@ -1,14 +1,14 @@
 # =====================================================================================
 # Pure transformation logic for the whoz_talent silver table.
 #
-# Same contract as profile_shaping.py: NO dependency on `pyspark.pipelines`, plain
+# Same contract as shaping/profile.py: NO dependency on `pyspark.pipelines`, plain
 # DataFrame in / DataFrame out, so it can be unit tested against a local SparkSession.
-# silver_whoz_talent.py imports shape_talent() and wraps it with @dp.table.
+# silver/whoz_talent.py imports shape_talent() and wraps it with @dp.table.
 #
 # WHAT THIS DOES AND DOESN'T MODEL
 #
 # The talent export nests a whole profile object under `profile`. That object overlaps
-# heavily with the separate profile export already modelled in profile_shaping.py, but is
+# heavily with the separate profile export already modelled in shaping/profile.py, but is
 # not identical — it carries educations[], links[], mainSkills[], secondarySkills[],
 # unclassifiedSkills[] and headline.bio / headline.company, none of which appear in the
 # profile export.
@@ -32,10 +32,11 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 # The declared schema of silver.whoz_talents / silver.whoz_talent_versions. Same rules as
-# PROFILE_COLUMNS in profile_shaping.py: it must match shape_talent()'s SELECT column for
-# column and in order (tests/test_schema_contract.py asserts exactly that), and an
-# unescaped apostrophe inside a COMMENT ends the string literal early and takes the whole
-# schema down with it — double it ('Whoz''s') and trust the tests to catch it if you forget.
+# PROFILE_COLUMNS in shaping/profile.py: it must match shape_talent()'s SELECT column for
+# column and in order (tests/layer2_contract/test_talent_contract.py asserts exactly that),
+# and an unescaped apostrophe inside a COMMENT ends the string literal early and takes the
+# whole schema down with it — double it ('Whoz''s') and trust the tests to catch it if you
+# forget.
 #
 # Distributions named here describe the export analysed on 2026-07-31, not a guarantee.
 TALENT_COLUMNS = """
@@ -75,9 +76,9 @@ TALENT_COLUMNS = """
 
 
 # The schema of silver.whoz_talent_versions: the same columns plus AUTO CDC's SCD2 validity
-# window. Built here rather than concatenated at the call site so tests/test_schema_contract.py
-# checks the real string the pipeline uses. Both columns must be TIMESTAMP to match the
-# flow's sequence_by (source_last_modified_at).
+# window. Built here rather than concatenated at the call site so
+# tests/layer2_contract/test_talent_contract.py checks the real string the pipeline uses.
+# Both columns must be TIMESTAMP to match the flow's sequence_by (source_last_modified_at).
 TALENT_HISTORY_COLUMNS = (
     TALENT_COLUMNS
     + """,
@@ -96,7 +97,7 @@ def size_of(path):
     """size() of a payload collection as an INT, NULL rather than an error if it isn't one.
 
     Note NULL, not 0, when the key is absent — the same behaviour as the *_count columns in
-    profile_shaping.py, and worth knowing before summing one of these downstream.
+    shaping/profile.py, and worth knowing before summing one of these downstream.
     """
     return F.expr(f"try_cast(size(cast(payload:{path} as array<variant>)) as int)")
 

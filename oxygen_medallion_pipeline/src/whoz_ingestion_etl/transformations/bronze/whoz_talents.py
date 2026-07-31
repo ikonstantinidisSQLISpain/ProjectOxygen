@@ -5,14 +5,14 @@
 # untouched in a single VARIANT column ("payload"), including the whole nested `profile`
 # object. Nothing is inferred, nothing is cast, nothing can drift.
 #
-# Structurally identical to bronze_whoz_profiles.py — same pretty-printed JSON *array*
+# Structurally identical to bronze/whoz_profiles.py — same pretty-printed JSON *array*
 # root, so the same multiLine + singleVariantColumn + variant_explode treatment applies.
 # Read that file's header for why: multiLine loads the whole file as one entity and
 # singleVariantColumn puts all of it into one VARIANT value in one row, so the array has
 # to be exploded explicitly to get one row per talent.
 #
 # The nested profile is deliberately NOT flattened here or in silver — see
-# utilities/talent_shaping.py's header for that decision and how to reverse it.
+# utilities/shaping/talent.py's header for that decision and how to reverse it.
 # =====================================================================================
 
 from pyspark import pipelines as dp
@@ -75,7 +75,7 @@ def whoz_talents():
     )
 
     # The temp view is NOT redundant, however much it looks it — see the long note in
-    # bronze_whoz_profiles.py. Binding a DataFrame into spark.sql(..., raw=raw) fails
+    # bronze/whoz_profiles.py. Binding a DataFrame into spark.sql(..., raw=raw) fails
     # inside a real pipeline with "_dlt_sql_fn() got an unexpected keyword argument", and
     # only there: local pytest and `databricks bundle validate` both pass happily.
     raw.createOrReplaceTempView("_whoz_talents_raw")

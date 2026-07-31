@@ -1,6 +1,6 @@
-"""Layer 2 — does the declared schema still describe what the code produces?
+"""Layer 2 — does the declared schema still describe what the code produces? (profile entity)
 
-PROFILE_COLUMNS (utilities/profile_shaping.py) is the DDL string handed to
+PROFILE_COLUMNS (utilities/shaping/profile.py) is the DDL string handed to
 create_streaming_table(schema=...) for silver.whoz_profiles and, with __START_AT/__END_AT
 appended, silver.whoz_profile_history.
 
@@ -11,11 +11,13 @@ pipeline update. These tests close that gap for the price of one local SparkSess
 
 Extending to another table: give it a DDL constant next to its shaping function, then add
 the same two tests. The helpers do the work — see tests/helpers.py.
+
+The three long explanatory comments below are the reference material the talent block was
+copied from; the talent entity's half of this layer lives in test_talent_contract.py.
 """
 
 from helpers import assert_schema_matches_ddl, ddl_columns
-from utilities.profile_shaping import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
-from utilities.talent_shaping import TALENT_COLUMNS, TALENT_HISTORY_COLUMNS, shape_talent
+from utilities.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 
 def test_profile_columns_is_valid_ddl():
@@ -40,12 +42,13 @@ def test_declared_schema_matches_shape_profile_output(profile_fixture):
     assert_schema_matches_ddl(result, PROFILE_COLUMNS)
 
 
-def test_history_schema_adds_only_the_scd2_columns():
+def test_profile_history_schema_adds_only_the_scd2_columns():
     # silver.whoz_profile_history is PROFILE_COLUMNS + __START_AT/__END_AT, and AUTO CDC
     # requires both to be typed to match sequence_by (source_last_modified_at, TIMESTAMP).
     # Get that wrong and the SCD2 flow fails to attach at update time, not at validate
     # time. Note this parses PROFILE_HISTORY_COLUMNS — the actual string
-    # silver_whoz_profile.py passes to create_streaming_table, not a copy of it.
+    # transformations/silver/whoz_profile.py passes to create_streaming_table, not a copy
+    # of it.
     base = ddl_columns(PROFILE_COLUMNS)
     history = ddl_columns(PROFILE_HISTORY_COLUMNS)
 
@@ -53,30 +56,5 @@ def test_history_schema_adds_only_the_scd2_columns():
     assert history[len(base) :] == [("__START_AT", "timestamp"), ("__END_AT", "timestamp")]
     sequence_by_type = dict(base)["source_last_modified_at"]
     assert sequence_by_type == "timestamp", (
-        "sequence_by column and the SCD2 window columns must share a type"
-    )
-
-
-# -------------------------------------------------------------------------------------
-# The talent entity. Two tests, the same two questions — this is the whole cost of adding
-# an entity to layer 2.
-# -------------------------------------------------------------------------------------
-def test_talent_columns_is_valid_ddl():
-    assert len(ddl_columns(TALENT_COLUMNS)) > 0
-
-
-def test_declared_schema_matches_shape_talent_output(talent_fixture):
-    result = shape_talent(talent_fixture("hazards"))
-
-    assert_schema_matches_ddl(result, TALENT_COLUMNS)
-
-
-def test_talent_history_schema_adds_only_the_scd2_columns():
-    base = ddl_columns(TALENT_COLUMNS)
-    history = ddl_columns(TALENT_HISTORY_COLUMNS)
-
-    assert history[: len(base)] == base, "the SCD2 columns must be appended, not interleaved"
-    assert history[len(base) :] == [("__START_AT", "timestamp"), ("__END_AT", "timestamp")]
-    assert dict(base)["source_last_modified_at"] == "timestamp", (
         "sequence_by column and the SCD2 window columns must share a type"
     )

@@ -6,7 +6,8 @@
 # Two things read these dicts:
 #
 #   1. the pipeline, via @dp.expect_all / @dp.expect_all_or_drop (transformations/*.py)
-#   2. the test suite, via tests/test_expectations.py
+#   2. the test suite, via tests/layer3_rules/ (test_rule_hygiene.py plus the per-entity
+#      test_profile_rules.py / test_talent_rules.py)
 #
 # That is the whole point of the indirection. A predicate passed straight to
 # @dp.expect_or_drop("name", "sql") is an opaque string: py_compile, ruff, pytest and
@@ -15,7 +16,7 @@
 # imports nothing, so a test can import it without a Spark session or a running
 # pipeline — is what lets the tests evaluate every rule against a real DataFrame and
 # fail locally instead of at the next pipeline update. Same reasoning as PROFILE_COLUMNS
-# in profile_shaping.py.
+# in shaping/profile.py.
 #
 # NAMING CONVENTION — the suffix is the action, and it is a contract, not a label:
 #
@@ -32,9 +33,10 @@
 # talent_id_not_null and is_main_version — where a NULL genuinely is the signal.
 #
 # To add a rule: add one line to the right dict below. The pipeline picks it up with no
-# change to transformations/, and tests/test_expectations.py starts checking that it
-# parses and resolves automatically. Adding the case that proves it catches something is
-# still on you — see tests/test_expectations.py.
+# change to transformations/, and tests/layer3_rules/test_rule_hygiene.py starts checking
+# that it parses and resolves automatically. Adding the case that proves it catches
+# something is still on you — that goes in the entity's behaviour file,
+# tests/layer3_rules/test_profile_rules.py or test_talent_rules.py.
 # =====================================================================================
 
 # -------------------------------------------------------------------------------------
@@ -165,7 +167,7 @@ APTITUDE_REF_MUST_HOLD = {
 # -------------------------------------------------------------------------------------
 # Registry of every rule set above, keyed by "<dataset>.<action>".
 #
-# Only tests use this: it is what lets tests/test_expectations.py assert things about
+# Only tests use this: it is what lets tests/layer3_rules/test_rule_hygiene.py assert things about
 # ALL rules in the project (they parse, names are unique and snake_case, MUST_HOLD stays
 # minimal) without anyone remembering to add the new rule to a list. The pipeline
 # imports the individual dicts, never this.

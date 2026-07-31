@@ -41,7 +41,13 @@ builtins = ["spark"]
 # `whoz_ingestion_etl.utilities.x`. Pointing pytest at the same folder means tests
 # import by the exact path production uses, so a wrong prefix fails locally and in CI
 # rather than surviving to a deploy (which is how it was found the first time).
-pythonpath = ["src/whoz_ingestion_etl"]
+#
+# "tests" is the second entry so that `from helpers import ...` keeps resolving. It used to
+# work for free: with no __init__.py under tests/, pytest prepends each test file's own
+# directory to sys.path, and every test file sat directly in tests/. Now that they sit in
+# tests/layer1_shaping/ and friends, pytest inserts the *subfolder* instead and helpers.py
+# is no longer on the path. Naming tests/ here puts it back, for every subfolder at once.
+pythonpath = ["src/whoz_ingestion_etl", "tests"]
 testpaths = ["tests"]
 # -ra prints a summary of everything that wasn't a plain pass at the end of the run;
 # --strict-markers turns a typo'd @pytest.mark into an error instead of a silent no-op.

@@ -7,10 +7,11 @@ right exactly once:
   * no row violates a set of quality rules              -> assert_no_violations
   * specific rows do violate them, as designed          -> assert_violations
 
-Import them by plain module name (`from helpers import ...`). pytest puts the directory of
-each test file at the front of sys.path, so tests/ is importable without being a package —
-there is deliberately no __init__.py here, since adding one would make the import
-`tests.helpers` instead and every test module would need editing.
+Import them by plain module name (`from helpers import ...`). tests/ is on sys.path because
+pyproject.toml's pythonpath names it — the test modules live in layer subfolders, so pytest's
+own "directory of the test file" insertion would only reach the subfolder. There is
+deliberately no __init__.py here, since adding one would make the import `tests.helpers`
+instead and every test module would need editing.
 """
 
 from pyspark.sql import DataFrame
@@ -51,7 +52,8 @@ def ddl_columns(ddl: str) -> list[tuple[str, str]]:
     """Parse a DDL string into an ordered [(name, type)] list.
 
     Raises on invalid DDL, which is itself a useful test — see
-    tests/test_schema_contract.py for why nothing else in the toolchain notices.
+    tests/layer2_contract/test_profile_contract.py for why nothing else in the toolchain
+    notices.
     """
     return [(f.name, f.dataType.simpleString()) for f in StructType.fromDDL(ddl).fields]
 

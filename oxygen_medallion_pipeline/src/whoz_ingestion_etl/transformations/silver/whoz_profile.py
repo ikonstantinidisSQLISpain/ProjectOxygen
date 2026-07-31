@@ -2,7 +2,7 @@
 # SILVER — silver.whoz_profiles / silver.whoz_profile_history
 #
 # Profile-level (1 row per profile) flattening of the bronze VARIANT payload.
-# Child collections are handled in silver_whoz_profile_children.py.
+# Child collections are handled in silver/whoz_profile_children.py.
 #
 # Every extraction uses try_variant_get so that a bad value nulls one column instead
 # of failing the update. Collections stay as VARIANT here — they are unnested in the
@@ -17,7 +17,7 @@ from pyspark.sql import functions as F
 # parent. tests/ import by this same path (see pyproject.toml's pythonpath) so a wrong
 # prefix here fails the test suite too, instead of only at deploy time.
 from utilities.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
-from utilities.profile_shaping import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
+from utilities.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 CATALOG = spark.conf.get("whoz.catalog")
 BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
@@ -27,14 +27,14 @@ BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
 # -------------------------------------------------------------------------------------
 # Shaped, validated rows off bronze — pipeline-scoped, materializes nothing itself.
-# Whoz re-lands a full snapshot under each dated export (see bronze_whoz_profiles.py),
+# Whoz re-lands a full snapshot under each dated export (see bronze/whoz_profiles.py),
 # so the same profile_id shows up once per snapshot here. Both AUTO CDC flows below
 # read this same view and turn that into an upsert, keyed by profile_id. A temporary
 # view is never a catalog object, so it keeps its bare name — nothing to qualify.
 # -------------------------------------------------------------------------------------
 # Both rule sets are defined in utilities/expectations.py, not inline here: that module
-# imports nothing, so tests/test_expectations.py can import it and evaluate every
-# predicate against real shape_profile() output. A rule naming a column that does not
+# imports nothing, so tests/layer3_rules/test_profile_rules.py can import it and evaluate
+# every predicate against real shape_profile() output. A rule naming a column that does not
 # exist then fails in pytest instead of passing validate and firing on nothing forever.
 @dp.temporary_view
 @dp.expect_all_or_drop(PROFILE_MUST_HOLD)
@@ -82,7 +82,8 @@ dp.create_streaming_table(
     ),
     # SCD2 requires __START_AT/__END_AT in an explicit schema, typed to match sequence_by
     # (source_last_modified_at, TIMESTAMP). Both the concatenation and that type rule live
-    # in PROFILE_HISTORY_COLUMNS so tests/test_schema_contract.py checks this exact string.
+    # in PROFILE_HISTORY_COLUMNS so tests/layer2_contract/test_profile_contract.py checks
+    # this exact string.
     schema=PROFILE_HISTORY_COLUMNS,
     table_properties={"quality": "silver"},
     cluster_by=["profile_id"],
