@@ -92,8 +92,8 @@ erDiagram
         BOOL is_project
     }
 
-    activity }o -- o| service_line : has
-    activity }o -- o| department : has
+    activity }o -- o{ service_line : has
+    activity }o -- o{ department : has
 
     timesheet_report {
         BIGINT worker_id PK, FK
