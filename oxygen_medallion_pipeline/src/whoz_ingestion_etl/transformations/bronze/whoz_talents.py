@@ -12,7 +12,7 @@
 # to be exploded explicitly to get one row per talent.
 #
 # The nested profile is deliberately NOT flattened here or in silver — see
-# utilities/shaping/talent.py's header for that decision and how to reverse it.
+# whoz_ingestion/shaping/talent.py's header for that decision and how to reverse it.
 # =====================================================================================
 
 from pyspark import pipelines as dp

@@ -10,7 +10,15 @@ resources:
       # actually applies to anything.
       schema: ${var.bronze_schema}
       serverless: true
-      root_path: "../src/whoz_ingestion_etl"
+      # src/, not src/whoz_ingestion_etl/: root_path is what Lakeflow puts on sys.path,
+      # and the shaping/expectations code the transformations import lives in the sibling
+      # src/whoz_ingestion/ package (shared with the test suite). Pointing one level up
+      # makes `import whoz_ingestion.shaping.profile` resolve here by exactly the same
+      # path pytest uses (pyproject.toml's pythonpath), which is the property worth
+      # protecting — an import that works in one and not the other is a deploy-time
+      # failure found the hard way. Only the glob below is loaded as pipeline source;
+      # nothing else under src/ is executed just for being on the path.
+      root_path: "../src"
 
       libraries:
         - glob:
@@ -33,9 +41,11 @@ resources:
         # see each other's files. Its own schemaLocation — two streams must never share a
         # checkpoint directory.
         #
-        # NOTE these are ${var.catalog}-qualified while the two profile paths above are
-        # still hardcoded to oxygen_dev. That's a known open bug on the profile side, not
-        # an inconsistency to copy: hardcoded, test and prod would read dev's volume.
+        # KNOWN OPEN BUG, all four paths above and below: the volume is hardcoded to
+        # oxygen_dev instead of being ${var.catalog}-qualified, so a test or prod deploy
+        # reads *dev's* landing volume. Only dev has been run against real files, which is
+        # why it hasn't bitten yet. Fix all four together — a half-fix is worse, since the
+        # two entities would then disagree about which environment they are in.
         whoz.talents.source_path: /Volumes/oxygen_dev/landing/source/
         whoz.talents.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_talents_schema
         whoz.catalog: ${var.catalog}

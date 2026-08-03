@@ -6,7 +6,7 @@
 #
 # The nested `profile` object is NOT re-modelled here: silver.whoz_profiles already models
 # profiles from the separate profile export, and this table carries profile_id as a foreign
-# key into it. See utilities/shaping/talent.py's header for that decision.
+# key into it. See whoz_ingestion/shaping/talent.py's header for that decision.
 #
 # NAMING: whoz_talent_versions is the SCD2 history of *this table* (how a talent record
 # changed over time). whoz_talent_workspace_history is the source's own history[] array
@@ -17,15 +17,16 @@
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
-# Not "whoz_ingestion_etl.utilities...": the pipeline's root_path IS src/whoz_ingestion_etl,
-# so that folder itself is on sys.path at runtime, not its parent.
-from utilities.expectations import (
+# The shared code lives in the sibling src/whoz_ingestion/ package: the pipeline's
+# root_path IS src/, so src/ itself is on sys.path at runtime and `whoz_ingestion.x`
+# resolves — the same path the test suite imports by.
+from whoz_ingestion.expectations import (
     TALENT_MUST_HOLD,
     TALENT_SHOULD_HOLD,
     WORKSPACE_HISTORY_MUST_HOLD,
     WORKSPACE_HISTORY_SHOULD_HOLD,
 )
-from utilities.shaping.talent import TALENT_COLUMNS, TALENT_HISTORY_COLUMNS, shape_talent
+from whoz_ingestion.shaping.talent import TALENT_COLUMNS, TALENT_HISTORY_COLUMNS, shape_talent
 
 CATALOG = spark.conf.get("whoz.catalog")
 BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
@@ -37,7 +38,7 @@ BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_talents"
 # Shaped, validated rows off bronze — pipeline-scoped, materializes nothing itself. Both
 # AUTO CDC flows below read this same view, so the rules run once and protect both targets.
 #
-# Rule sets live in utilities/expectations.py so tests/layer3_rules/test_talent_rules.py
+# Rule sets live in whoz_ingestion/expectations.py so tests/layer3_rules/test_talent_rules.py
 # can evaluate every predicate against real shape_talent() output.
 # -------------------------------------------------------------------------------------
 @dp.temporary_view

@@ -1,12 +1,30 @@
-"""Distribution package for the `whoz_ingestion` project defined in pyproject.toml.
+"""Shared code for the Whoz source: everything more than one consumer needs.
 
-Intentionally empty of logic. The pipeline's own code does NOT live here — it lives in
-src/whoz_ingestion_etl/, which Lakeflow puts on sys.path directly via the pipeline's
-root_path and which is therefore never imported as part of this package.
+Two consumers today, and the split between them is the reason this package exists:
 
-This module exists only so hatchling has a package matching `[project] name` to build
-when the pipeline runs `pip install --editable` against the deployed bundle (see
-resources/whoz_ingestion_etl.pipeline.yml's environment.dependencies).
+  * the pipeline — src/whoz_ingestion_etl/transformations/**, which Lakeflow loads and
+    which imports `whoz_ingestion.shaping.<entity>` and `whoz_ingestion.expectations`
+  * the test suite — tests/, which imports the very same modules
+
+Nothing in this package may import `pyspark.pipelines`. That module only exists inside a
+running Lakeflow pipeline, so importing it here would make every module in this package
+uncollectable by pytest — which is precisely the property this package exists to keep.
+Plain `pyspark.sql` only: DataFrame in, DataFrame out, plus the constants that describe
+the result.
+
+  shaping/<entity>.py   `shape_<entity>(bronze) -> DataFrame`, plus that entity's
+                        `<ENTITY>_COLUMNS` DDL constants
+  expectations.py       every data quality rule in the project, as {name: SQL} dicts
+
+HOW IT RESOLVES AT RUNTIME. The pipeline's root_path is src/, not src/whoz_ingestion_etl/
+(see resources/whoz_ingestion_etl.pipeline.yml), so src/ is on sys.path inside the pipeline
+and this package is importable there by the same `whoz_ingestion.x` path pytest uses via
+pyproject.toml's pythonpath. Keep those two settings in step: that they agree is what makes
+a bad import fail locally instead of at deploy time.
+
+This is also the package hatchling builds for `[project] name = "whoz_ingestion"`, which is
+what `pip install --editable` installs when the pipeline sets up its environment (see the
+same pipeline YAML's environment.dependencies).
 
 Do not let this file become empty again. A zero-byte file is not deployed by
 `databricks bundle deploy`, so the package silently vanishes from the workspace and the

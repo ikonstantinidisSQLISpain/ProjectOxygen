@@ -1,6 +1,6 @@
 """Layer 3 — are the data quality rules themselves right? (hygiene, over every rule)
 
-The pipeline's quality rules live in utilities/expectations.py as {name: SQL} dicts and
+The pipeline's quality rules live in whoz_ingestion/expectations.py as {name: SQL} dicts and
 are applied by the @dp.expect_all* decorators in transformations/. Those predicates are
 strings: a rule naming a column that does not exist, or one that matches nothing it was
 meant to catch, is invisible to py_compile, ruff and `databricks bundle validate` alike.
@@ -10,7 +10,7 @@ and nobody looks again.
 So there are two kinds of test in this layer, and both matter:
 
   1. Hygiene, over every rule in the project via ALL_RULE_SETS. Automatic: add a rule to
-     utilities/expectations.py and these start covering it with no edit here. What makes
+     whoz_ingestion/expectations.py and these start covering it with no edit here. What makes
      that true for a whole new rule set, and not just a new line in an existing one, is
      test_every_rule_set_is_registered, which checks the registry against the module —
      paired with test_every_rule_set_is_applied_by_a_transformation, which checks the other
@@ -27,8 +27,8 @@ Coverage note: the profile rules are checked against real shape_profile() output
 (test_profile_rules.py), so a typo in a column name fails there. The child-table rules
 (aptitudes, positions, refs) get hygiene checks only — their SQL still lives inline in
 transformations/silver/whoz_profile_children.py, so there is no local DataFrame with those
-columns to resolve against. Moving those bodies into utilities/ the way
-utilities/shaping/profile.py was done is what would upgrade them, and the tests to add
+columns to resolve against. Moving those bodies into whoz_ingestion/shaping/ the way
+whoz_ingestion/shaping/profile.py was done is what would upgrade them, and the tests to add
 afterwards are the three in test_profile_rules.py.
 """
 
@@ -37,8 +37,9 @@ import re
 
 import pytest
 from pyspark.sql import functions as F
-from utilities import expectations
-from utilities.expectations import ALL_RULE_SETS
+
+from whoz_ingestion import expectations
+from whoz_ingestion.expectations import ALL_RULE_SETS
 
 # Every (rule set label, rule name, predicate) in the project, flattened for
 # parametrization so each rule shows up as its own named test case.
@@ -48,7 +49,7 @@ ALL_RULES = [
     for name, sql in rules.items()
 ]
 
-# Every module-level rule set in utilities/expectations.py, {name: rules}. Read off the
+# Every module-level rule set in whoz_ingestion/expectations.py, {name: rules}. Read off the
 # module rather than written out here on purpose: a hand-kept list in this file would need
 # exactly the maintenance — and fail in exactly the silent way — that the two tests below
 # exist to prevent.
@@ -124,7 +125,7 @@ def test_every_rule_set_is_registered():
     missing = sorted(name for name, rules in DECLARED_RULE_SETS.items() if id(rules) not in registered)
 
     assert not missing, (
-        f"these rule sets are declared in utilities/expectations.py but are not in "
+        f"these rule sets are declared in whoz_ingestion/expectations.py but are not in "
         f"ALL_RULE_SETS, so no hygiene test above covers them: {missing}. Add one line per "
         f"dict to the registry."
     )
@@ -138,7 +139,7 @@ def test_every_rule_set_is_registered():
 # `dp` so that renaming the import alias does not quietly turn this test into a no-op.
 #
 # It is deliberately a decorator match and not a bare name search: a plain search would be
-# satisfied by the `from utilities.expectations import ...` line at the top of each module,
+# satisfied by the `from whoz_ingestion.expectations import ...` line at the top of each module,
 # so a rule set that was imported and then never applied would pass. If this regex ever
 # stops matching the real call style, every rule set reports as unapplied at once — loud and
 # obviously wrong, which is the right direction for a check like this to fail in.
@@ -164,7 +165,7 @@ def test_every_rule_set_is_applied_by_a_transformation():
     unapplied = sorted(set(DECLARED_RULE_SETS) - applied)
 
     assert not unapplied, (
-        f"these rule sets are declared in utilities/expectations.py but no transformation "
+        f"these rule sets are declared in whoz_ingestion/expectations.py but no transformation "
         f"applies them, so the pipeline does not enforce them: {unapplied}. Pass each to "
         f"@dp.expect_all (or @dp.expect_all_or_drop) in transformations/, or delete it."
     )

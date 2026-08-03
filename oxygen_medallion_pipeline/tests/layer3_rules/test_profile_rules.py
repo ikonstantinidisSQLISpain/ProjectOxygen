@@ -1,6 +1,6 @@
 """Layer 3 — are the data quality rules themselves right? (profile behaviour)
 
-The pipeline's quality rules live in utilities/expectations.py as {name: SQL} dicts and
+The pipeline's quality rules live in whoz_ingestion/expectations.py as {name: SQL} dicts and
 are applied by the @dp.expect_all* decorators in transformations/. Those predicates are
 strings: a rule naming a column that does not exist, or one that matches nothing it was
 meant to catch, is invisible to py_compile, ruff and `databricks bundle validate` alike.
@@ -10,7 +10,7 @@ and nobody looks again.
 So there are two kinds of test in this layer, and both matter:
 
   1. Hygiene, over every rule in the project via ALL_RULE_SETS. Automatic: add a rule to
-     utilities/expectations.py and these start covering it with no edit here. That half
+     whoz_ingestion/expectations.py and these start covering it with no edit here. That half
      lives in test_rule_hygiene.py.
   2. Behaviour, per rule set: it passes clean data (fixtures/whoz_profiles/typical.json,
      hazards.json) and it catches the rows it is meant to catch
@@ -22,8 +22,9 @@ This module is (2) for the profile entity; test_talent_rules.py is the same for 
 
 import pytest
 from helpers import assert_no_violations, assert_violations, failing_counts
-from utilities.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
-from utilities.shaping.profile import shape_profile
+
+from whoz_ingestion.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
+from whoz_ingestion.shaping.profile import shape_profile
 
 # -------------------------------------------------------------------------------------
 # Behaviour — the profile rules, resolved against real shape_profile() output.
@@ -63,7 +64,7 @@ def test_profile_rules_catch_the_records_designed_to_break_them(profile_fixture)
 
 def test_every_profile_rule_is_covered_by_the_violations_fixture(profile_fixture):
     # The guard on the test above: it asserts the counts it lists, but adding a rule to
-    # utilities/expectations.py without adding a record that trips it would leave the new
+    # whoz_ingestion/expectations.py without adding a record that trips it would leave the new
     # rule silently unproven. This fails until the fixture covers it.
     shaped = shape_profile(profile_fixture("violations"))
 

@@ -1,6 +1,6 @@
 """Layer 2 — does the declared schema still describe what the code produces? (talent entity)
 
-TALENT_COLUMNS (utilities/shaping/talent.py) is the DDL string handed to
+TALENT_COLUMNS (whoz_ingestion/shaping/talent.py) is the DDL string handed to
 create_streaming_table(schema=...) for silver.whoz_talents and, with __START_AT/__END_AT
 appended, silver.whoz_talent_versions.
 
@@ -18,7 +18,8 @@ is written the way it is live there.
 """
 
 from helpers import assert_schema_matches_ddl, ddl_columns
-from utilities.shaping.talent import TALENT_COLUMNS, TALENT_HISTORY_COLUMNS, shape_talent
+
+from whoz_ingestion.shaping.talent import TALENT_COLUMNS, TALENT_HISTORY_COLUMNS, shape_talent
 
 
 # -------------------------------------------------------------------------------------

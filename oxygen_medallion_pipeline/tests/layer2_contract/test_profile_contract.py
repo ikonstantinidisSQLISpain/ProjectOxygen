@@ -1,6 +1,6 @@
 """Layer 2 — does the declared schema still describe what the code produces? (profile entity)
 
-PROFILE_COLUMNS (utilities/shaping/profile.py) is the DDL string handed to
+PROFILE_COLUMNS (whoz_ingestion/shaping/profile.py) is the DDL string handed to
 create_streaming_table(schema=...) for silver.whoz_profiles and, with __START_AT/__END_AT
 appended, silver.whoz_profile_history.
 
@@ -17,7 +17,8 @@ copied from; the talent entity's half of this layer lives in test_talent_contrac
 """
 
 from helpers import assert_schema_matches_ddl, ddl_columns
-from utilities.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
+
+from whoz_ingestion.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 
 def test_profile_columns_is_valid_ddl():

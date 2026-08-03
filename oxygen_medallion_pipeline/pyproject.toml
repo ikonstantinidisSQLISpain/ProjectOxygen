@@ -17,7 +17,7 @@ dev = [
     "ruff",
     # Plain open-source PySpark, not databricks-connect: the two can't be installed
     # together, and Spark 4.0 open-sourced the VARIANT type / try_variant_get /
-    # variant_explode that utilities/*.py needs, so a local session is enough to
+    # variant_explode that src/whoz_ingestion/ needs, so a local session is enough to
     # unit test it. Needs a local JDK 17+ on PATH (see README.md#testing).
     "pyspark>=4.0,<5",
     "ipykernel",
@@ -35,19 +35,19 @@ line-length = 120
 builtins = ["spark"]
 
 [tool.pytest.ini_options]
-# Deliberately src/whoz_ingestion_etl and NOT src. The pipeline's root_path IS
-# src/whoz_ingestion_etl (resources/whoz_ingestion_etl.pipeline.yml), so at runtime
-# that folder is on sys.path and modules are imported as `utilities.x` — never
-# `whoz_ingestion_etl.utilities.x`. Pointing pytest at the same folder means tests
-# import by the exact path production uses, so a wrong prefix fails locally and in CI
-# rather than surviving to a deploy (which is how it was found the first time).
+# "src" because the pipeline's root_path IS src (resources/whoz_ingestion_etl.pipeline.yml),
+# so at runtime that folder is on sys.path and the shared code is imported as
+# `whoz_ingestion.shaping.x` / `whoz_ingestion.expectations` — the same package path in a
+# pipeline and in pytest. Keep these two in step: pointing pytest at the same folder the
+# pipeline uses is what makes a wrong import prefix fail locally and in CI rather than
+# surviving to a deploy (which is how it was found the first time).
 #
 # "tests" is the second entry so that `from helpers import ...` keeps resolving. It used to
 # work for free: with no __init__.py under tests/, pytest prepends each test file's own
 # directory to sys.path, and every test file sat directly in tests/. Now that they sit in
 # tests/layer1_shaping/ and friends, pytest inserts the *subfolder* instead and helpers.py
 # is no longer on the path. Naming tests/ here puts it back, for every subfolder at once.
-pythonpath = ["src/whoz_ingestion_etl", "tests"]
+pythonpath = ["src", "tests"]
 testpaths = ["tests"]
 # -ra prints a summary of everything that wasn't a plain pass at the end of the run;
 # --strict-markers turns a typo'd @pytest.mark into an error instead of a silent no-op.

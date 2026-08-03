@@ -1,7 +1,7 @@
 """Shared pytest fixtures: a local Spark session, and bronze-shaped test input.
 
 Tests run against plain open-source PySpark, not a live Databricks workspace: the logic
-under test (src/whoz_ingestion_etl/utilities/) only uses VARIANT / try_variant_get /
+under test (src/whoz_ingestion/) only uses VARIANT / try_variant_get /
 variant_explode / schema_of_variant, which Apache Spark 4.0 open-sourced from Databricks
 Runtime. This needs a local JDK 17+ on PATH but no Databricks credentials and no live
 cluster.

@@ -13,12 +13,12 @@
 
 from pyspark import pipelines as dp
 
-# Quality rules are defined as data in utilities/expectations.py rather than inline in the
+# Quality rules are defined as data in whoz_ingestion/expectations.py rather than inline in the
 # decorators below, so that tests/layer3_rules/test_rule_hygiene.py can check them — see
 # that module's header for the reasoning. Hygiene is all these child-table rules get: their
-# SQL bodies are inline below rather than in utilities/, so there is no local DataFrame to
+# SQL bodies are inline below rather than in whoz_ingestion/shaping/, so there is no local DataFrame to
 # resolve their predicates against, and they have no per-entity behaviour file.
-from utilities.expectations import (
+from whoz_ingestion.expectations import (
     APTITUDE_MUST_HOLD,
     APTITUDE_REF_MUST_HOLD,
     APTITUDE_SHOULD_HOLD,

@@ -6,9 +6,9 @@ silver.whoz_profiles and silver.whoz_profile_history.
 Scope note: @dp.table-decorated functions can't be imported outside a running pipeline
 (their expectation decorators don't exist in open-source pyspark.pipelines, and the
 module-level spark.conf.get calls fail with no pipeline configuration). That is why the
-shaping logic lives in utilities/shaping/profile.py with no pipelines dependency at all,
+shaping logic lives in whoz_ingestion/shaping/profile.py with no pipelines dependency at all,
 and transformations/silver/whoz_profile.py is a thin wrapper that imports and decorates it.
-Test the utilities function; don't try to call the @dp.table one.
+Test the whoz_ingestion function; don't try to call the @dp.table one.
 
 What belongs here: one test per *documented hazard* in docs/whoz_profile_data_model.md,
 plus the plain happy path. Each test names the hazard it pins down, so when Whoz changes
@@ -18,8 +18,8 @@ something the failure says which assumption broke rather than just "shaping is w
 from pyspark.sql import DataFrame
 
 # Imported exactly the way the pipeline imports it — see pyproject.toml's pythonpath.
-# Not "whoz_ingestion_etl.utilities...", which resolves for neither.
-from utilities.shaping.profile import shape_profile
+# src/ is on sys.path in both places, so `whoz_ingestion.x` is the one true prefix.
+from whoz_ingestion.shaping.profile import shape_profile
 
 
 def by_profile_id(df: DataFrame) -> dict:
