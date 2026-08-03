@@ -12,12 +12,13 @@
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
-# Not "whoz_ingestion_etl.utilities...": the pipeline's root_path IS
-# src/whoz_ingestion_etl, so that folder itself is on sys.path at runtime, not its
-# parent. tests/ import by this same path (see pyproject.toml's pythonpath) so a wrong
-# prefix here fails the test suite too, instead of only at deploy time.
-from utilities.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
-from utilities.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
+# The shared code lives in the sibling src/whoz_ingestion/ package, not under this
+# pipeline folder: the pipeline's root_path IS src/ (see
+# resources/whoz_ingestion_etl.pipeline.yml), so src/ itself is on sys.path at runtime and
+# `whoz_ingestion.x` resolves. tests/ import by this same path (see pyproject.toml's
+# pythonpath) so a wrong prefix here fails the test suite too, not only at deploy time.
+from whoz_ingestion.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
+from whoz_ingestion.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 CATALOG = spark.conf.get("whoz.catalog")
 BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
@@ -32,7 +33,7 @@ BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 # read this same view and turn that into an upsert, keyed by profile_id. A temporary
 # view is never a catalog object, so it keeps its bare name — nothing to qualify.
 # -------------------------------------------------------------------------------------
-# Both rule sets are defined in utilities/expectations.py, not inline here: that module
+# Both rule sets are defined in whoz_ingestion/expectations.py, not inline here: that module
 # imports nothing, so tests/layer3_rules/test_profile_rules.py can import it and evaluate
 # every predicate against real shape_profile() output. A rule naming a column that does not
 # exist then fails in pytest instead of passing validate and firing on nothing forever.

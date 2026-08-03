@@ -13,13 +13,13 @@ the four extra items in the last section.
 Read this once; the rest of the document assumes it.
 
 ```
-src/whoz_ingestion_etl/
-  transformations/        # imports pyspark.pipelines — cannot be unit tested
+src/whoz_ingestion_etl/     # the pipeline: what Lakeflow loads and runs
+  transformations/          # imports pyspark.pipelines — cannot be unit tested
     bronze/  <entity>.py
     silver/  <entity>.py
-  utilities/              # plain DataFrames — this is what the tests can reach
-    shaping/ <entity>.py  # shape_<entity>() + its <ENTITY>_COLUMNS DDL
-    expectations.py       # every quality rule in the project, as data
+src/whoz_ingestion/         # the shared package: plain DataFrames, what tests can reach
+  shaping/ <entity>.py      # shape_<entity>() + its <ENTITY>_COLUMNS DDL
+  expectations.py           # every quality rule in the project, as data
 tests/
   conftest.py  helpers.py         # shared by all three layers, owned by none
   layer1_shaping/   test_<entity>_shaping.py
@@ -28,12 +28,18 @@ tests/
                     test_<entity>_rules.py        # behavioural, one per entity
 ```
 
-**`transformations/` vs `utilities/` is a testability seam, not a tidiness one.** It is the
-thesis of this whole document: `pyspark.pipelines` only fully exists inside a running
+**`whoz_ingestion_etl/` vs `whoz_ingestion/` is a testability seam, not a tidiness one.** It
+is the thesis of this whole document: `pyspark.pipelines` only fully exists inside a running
 Lakeflow pipeline, so anything that imports it is unreachable from pytest. Everything worth
-testing therefore lives on the `utilities/` side of the line, and the `transformations/`
-side is kept as close to zero logic as it can be. Steps 3 and 4 are the real work; steps 8
-and 9 are wiring.
+testing therefore lives on the `whoz_ingestion/` side of the line, and the
+`whoz_ingestion_etl/` side is kept as close to zero logic as it can be. Steps 3 and 4 are the
+real work; steps 8 and 9 are wiring.
+
+They are **sibling folders under `src/`, not nested**, and that is deliberate: the shared
+side has two consumers (the pipeline and the test suite), so it should not read as though it
+belongs to the pipeline. The pipeline's `root_path` is `src/`, which is what puts
+`whoz_ingestion` on `sys.path` at runtime under the same name `pyproject.toml`'s
+`pythonpath` gives it in pytest — one import prefix, `whoz_ingestion.x`, in both places.
 
 **`transformations/` is layer-first (`bronze/`, `silver/`), not entity-first.** A future
 `gold/` layer joins *across* entities, so it needs a peer folder; in an entity-first tree
@@ -48,7 +54,7 @@ trip pytest's "import file mismatch". Keep the names distinct; do not add `__ini
 `conftest.py` and `helpers.py` stay at the `tests/` root, and `pyproject.toml`'s
 `pythonpath` names `tests` so `from helpers import ...` keeps resolving from a subfolder.
 
-**`utilities/expectations.py` stays one file on purpose.** It is the one shared file you
+**`whoz_ingestion/expectations.py` stays one file on purpose.** It is the one shared file you
 still edit (step 4), and splitting it per entity would cost more than it saves: a rule set
 is ~10 lines of *data* per entity against ~160 lines of *code* for a shaping module; the
 file holds two genuinely cross-entity things — the `ALL_RULE_SETS` registry and the
@@ -72,8 +78,8 @@ feedback loop short.
 | 0 | `docs/<source>_<entity>_data_model.md` | new | analysis |
 | 1 | `fixtures/<entity>/{typical,hazards,violations}.json` | **new** (3 files) | `[TESTS]` |
 | 2 | `tests/conftest.py` | changed (3 edits) | `[TESTS]` |
-| 3 | `src/whoz_ingestion_etl/utilities/shaping/<entity>.py` | **new** | `[PIPELINE]` |
-| 4 | `src/whoz_ingestion_etl/utilities/expectations.py` | changed | `[PIPELINE]` |
+| 3 | `src/whoz_ingestion/shaping/<entity>.py` | **new** | `[PIPELINE]` |
+| 4 | `src/whoz_ingestion/expectations.py` | changed | `[PIPELINE]` |
 | 5 | `tests/layer1_shaping/test_<entity>_shaping.py` | **new** | `[TESTS]` |
 | 6 | `tests/layer2_contract/test_<entity>_contract.py` | **new** (3 tests) | `[TESTS]` |
 | 7 | `tests/layer3_rules/test_<entity>_rules.py` | **new** (3 tests) | `[TESTS]` |
@@ -84,7 +90,7 @@ feedback loop short.
 
 Six new source files — three that ship to Databricks (steps 3, 8, 9) and three tests (steps
 5, 6, 7) — plus the three fixtures and the data model doc. Exactly **two** existing Python
-files change: `tests/conftest.py` and `utilities/expectations.py`.
+files change: `tests/conftest.py` and `whoz_ingestion/expectations.py`.
 
 **All three test steps are new files, and that is the recent improvement.** Layers 2 and 3
 used to be "append your three tests to the shared `test_schema_contract.py` /
@@ -96,7 +102,7 @@ is a visibly absent file next to `test_talent_contract.py`, whereas a missing bl
 5, 6 and 7 are "copy the three talent files, s/talent/<entity>/, fix the expected values".
 
 **Step 4 is pipeline code, not test code**, even though most of what the step says is about
-tests. `utilities/expectations.py` is imported by the transformations — the rules genuinely
+tests. `whoz_ingestion/expectations.py` is imported by the transformations — the rules genuinely
 run in Databricks. It is read by *both* sides: the pipeline imports the individual
 `*_MUST_HOLD` / `*_SHOULD_HOLD` dicts and applies them via decorators, while the test suite
 imports `ALL_RULE_SETS`, a registry that exists only so `tests/layer3_rules/test_rule_hygiene.py`
@@ -105,10 +111,10 @@ are data in a module instead of string literals in a decorator argument.
 
 **Why there are more `[TESTS]` steps than `[PIPELINE]` ones.** Not because testing is the
 bigger job — because of where the seam is. `transformations/**/*.py` are deliberately thin
-wrappers: read the upstream table, call a `utilities/` function, return it. They can't be
+wrappers: read the upstream table, call a `whoz_ingestion/` function, return it. They can't be
 unit tested at all (`pyspark.pipelines` only fully exists inside a running Lakeflow pipeline,
 and the module-level `spark.conf.get` calls fail without one), so all the logic worth testing
-was pushed into `utilities/`, which takes and returns plain DataFrames. Steps 3 and 4 are
+was pushed into `whoz_ingestion/`, which takes and returns plain DataFrames. Steps 3 and 4 are
 where the real work happens; steps 8 and 9 are mostly wiring and configuration, and they are
 proved by deploying, not by pytest.
 
@@ -146,7 +152,7 @@ export file and answer:
 - [ ] **Nested arrays** — each one is either a `*_count` column, a child table, or ignored.
       Decide which, per array.
 - [ ] **What you deliberately will not model** — write this down. See
-      `utilities/shaping/talent.py`'s header for the standard to match: it records that the
+      `whoz_ingestion/shaping/talent.py`'s header for the standard to match: it records that the
       embedded `profile` object is *not* re-modelled, why, and how to reverse it.
 - [ ] Capture the analysis in `docs/<source>_<entity>_data_model.md`, alongside
       `docs/whoz_profile_data_model.md`.
@@ -236,9 +242,9 @@ type, re-infers `STRUCT<metadata: BINARY, value: BINARY>`, and `try_variant_get`
 
 ---
 
-## 3. `[PIPELINE]` `utilities/shaping/<entity>.py` — the actual work
+## 3. `[PIPELINE]` `whoz_ingestion/shaping/<entity>.py` — the actual work
 
-The seam that makes everything testable. Model it on `utilities/shaping/talent.py`.
+The seam that makes everything testable. Model it on `whoz_ingestion/shaping/talent.py`.
 
 - [ ] **No `pyspark.pipelines` import. Ever.** That module only fully exists inside a running
       Lakeflow pipeline. Plain `DataFrame` in, plain `DataFrame` out is what lets a local
@@ -274,7 +280,7 @@ The seam that makes everything testable. Model it on `utilities/shaping/talent.p
 
 ---
 
-## 4. `[PIPELINE]` `utilities/expectations.py` — the quality rules
+## 4. `[PIPELINE]` `whoz_ingestion/expectations.py` — the quality rules
 
 - [ ] **`<ENTITY>_MUST_HOLD`** → `@dp.expect_all_or_drop`, rows are **dropped**. In practice
       this holds exactly one rule: the null primary key check. Anything else is rejected by
@@ -444,13 +450,14 @@ most important lines in the step; see the blind-spot table at the end.
 
 The wiring that turns step 3's shaping function and step 4's rules into real tables. It
 should contain no logic of its own — if you find yourself writing a transformation here,
-it belongs in `utilities/shaping/` where it can be tested. Untested locally for the same
+it belongs in `whoz_ingestion/shaping/` where it can be tested. Untested locally for the same
 reason as step 8.
 
-- [ ] Import from `utilities.shaping.<entity>` and `utilities.expectations`. Note the import
-      root is `utilities.x`, **not** `whoz_ingestion_etl.utilities.x` — the pipeline's
-      `root_path` *is* `src/whoz_ingestion_etl`, and `pyproject.toml`'s `pythonpath` points
-      pytest at the same folder so a wrong prefix fails locally instead of at deploy.
+- [ ] Import from `whoz_ingestion.shaping.<entity>` and `whoz_ingestion.expectations`. Note the
+      import root is `whoz_ingestion.x`, **not** `src.whoz_ingestion.x` or
+      `whoz_ingestion_etl.whoz_ingestion.x` — the pipeline's `root_path` *is* `src`, and
+      `pyproject.toml`'s `pythonpath` points pytest at the same folder, so a wrong prefix
+      fails locally instead of at deploy.
 - [ ] A `@dp.temporary_view` named `<entity>_shaped` that returns
       `shape_<entity>(spark.readStream.table(BRONZE_TABLE))`, decorated with
       `@dp.expect_all_or_drop(<ENTITY>_MUST_HOLD)` and `@dp.expect_all(<ENTITY>_SHOULD_HOLD)`.
@@ -527,10 +534,14 @@ polish here, they are the test.
 
 ## 12. Documentation to update
 
-- [ ] `README.md` — a row per new table in the pipeline table, the entity in "What's
-      covered today", and your three new test files in the three-layer table under "Testing".
-- [ ] `src/whoz_ingestion_etl/README.md` — a bullet per new transformation file, under the
-      right layer.
+- [ ] `README.md` — a **new `### <Entity>` subsection** under "The Whoz source", with its
+      own table of bronze/silver tables. One entity per subsection, never appended to
+      another entity's table: the whole point of that split is that a reader looking for
+      one export never has to work out which rows belong to it. Also add the entity to
+      "What's covered today" and your three new test files to the three-layer table under
+      "Testing".
+- [ ] `src/whoz_ingestion_etl/README.md` — a bullet per new transformation file, under that
+      entity's heading (add the heading if it's a new entity).
 - [ ] `docs/<source>_<entity>_data_model.md` — the analysis from step 0.
 - [ ] The header comment of every file you created. The convention in this repo is that the
       header explains the *decision*, not the mechanics: what was rejected and why.
@@ -549,13 +560,13 @@ polish here, they are the test.
 | Doubling an apostrophe in a `COMMENT` | `test_<entity>_columns_is_valid_ddl`, locally |
 | A non-key predicate in `*_MUST_HOLD` | `test_drop_rules_only_ever_guard_a_key`, locally |
 | A duplicate rule name | `test_rule_names_are_unique_across_the_project`, locally |
-| A typo'd column in a rule predicate | `test_<entity>_rules.py`, locally — **but only for entities whose shaping lives in `utilities/shaping/`**. Child tables built inline in `transformations/silver/` get `test_rule_hygiene.py` only, and a bad column there surfaces at pipeline update. |
+| A typo'd column in a rule predicate | `test_<entity>_rules.py`, locally — **but only for entities whose shaping lives in `whoz_ingestion/shaping/`**. Child tables built inline in `transformations/silver/` get `test_rule_hygiene.py` only, and a bad column there surfaces at pipeline update. |
 | `to_utc_strings()` on a timestamp assertion | Nothing locally; CI, on a UTC runner |
 | Matching `BRONZE_KEYS` to the bronze `try_variant_get` paths | Nothing, anywhere. The tests keep passing and production is wrong. Check this one by eye. |
 | A correct `FILE_NAME_GLOB` | Nothing. Auto Loader finds no files and reports a healthy run. |
 
 The last two are the framework's real blind spots, and it is no coincidence that both belong
-to **step 8**: the `[TESTS]` track can only reach as far as the `utilities/` seam, so the
+to **step 8**: the `[TESTS]` track can only reach as far as the `whoz_ingestion/` seam, so the
 one place a mistake survives to production is the `[PIPELINE]`-only files it can't execute.
 Everything above those two rows is caught before merge — except the "steps 6 and 7" row,
 which is caught by review rather than by pytest. Those get read by a human or they get read
@@ -567,11 +578,13 @@ by nobody.
 
 Everything above, plus:
 
-- [ ] `src/<source>_etl/` alongside `whoz_ingestion_etl/`, with its own `transformations/`
-      (same `bronze/` + `silver/` layer-first split) and its own `utilities/` (`shaping/` plus
-      one `expectations.py`). Keep the shape identical — the layout is the part of this
-      document that generalises, and a second source that arranges itself differently makes
-      both harder to read.
+- [ ] `src/<source>_etl/` alongside `whoz_ingestion_etl/`, holding only `transformations/`
+      (same `bronze/` + `silver/` layer-first split), **plus** a sibling `src/<source>/`
+      shared package alongside `whoz_ingestion/` (`shaping/` plus one `expectations.py`).
+      One pair per source, never one shared package for two sources: a rename or a rule
+      change in one vendor's data model should not be able to break another's. Keep the
+      shape identical — the layout is the part of this document that generalises, and a
+      second source that arranges itself differently makes both harder to read.
 - [ ] `resources/<source>.pipeline.yml` — its own `root_path`, `libraries.glob` and
       `configuration` block. Picked up automatically by `databricks.yml`'s
       `include: resources/*.yml`; no new bundle and no change to `databricks.yml`.

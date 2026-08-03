@@ -105,7 +105,7 @@ def failing_counts(df: DataFrame, rules: dict[str, str]) -> dict[str, int]:
     """For each {name: SQL predicate} rule, how many rows fail it.
 
     A row fails when the predicate is not TRUE — FALSE *and* NULL both count. That is
-    the strict reading, and it is why utilities/expectations.py requires every warn-level
+    the strict reading, and it is why whoz_ingestion/expectations.py requires every warn-level
     rule to be written null-safe ("x IS NULL OR <check>"): under this counting, a rule
     that isn't null-safe reports every row with a missing optional field as a violation.
     Writing them null-safe means a violation always means what it says.

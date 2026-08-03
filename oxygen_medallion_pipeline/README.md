@@ -6,23 +6,35 @@ sources: each source is a self-contained pipeline + refresh job under `resources
 
 Sources today:
 
-* **Whoz** — profile export ingestion. See "The Whoz profile pipeline" below.
+* **Whoz** — two export files ingested by one pipeline: **profile** and **talent**. See
+  "The Whoz source" below, which has a section per entity.
 
 To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>.job.yml`
-(picked up automatically by `databricks.yml`'s `include: resources/*.yml`) and a
-`src/<source>_etl/` folder alongside `whoz_ingestion_etl/`. No new bundle, no new
+(picked up automatically by `databricks.yml`'s `include: resources/*.yml`) and the
+`src/<source>_etl/` + `src/<source>/` folder pair described below. No new bundle, no new
 `databricks.yml`.
 
-* `src/`: Python source code for this project.
-  * `src/whoz_ingestion/`: Shared Python code for the Whoz source, used by its jobs/pipelines.
-  * `src/whoz_ingestion_etl/transformations/`: the `@dp.table`-decorated dataset
-    definitions of the `whoz_ingestion_etl` pipeline, in `bronze/` and `silver/`
-    subfolders — layer-first, so a future `gold/` that joins across entities has a peer
-    folder to live in.
-  * `src/whoz_ingestion_etl/utilities/`: the pure DataFrame-in/DataFrame-out shaping
-    logic those datasets call (`shaping/<entity>.py`), plus `expectations.py`, the data
-    quality rules — both kept out of `transformations/` so they're testable, see Testing
-    below.
+* `src/`: Python source code, **two folders per source** — the pipeline and the shared
+  package it calls. The split is a testability seam, not tidiness: `pyspark.pipelines`
+  only fully exists inside a running Lakeflow pipeline, so anything importing it is
+  unreachable from pytest.
+  * `src/whoz_ingestion_etl/`: the pipeline — only what Lakeflow loads and runs.
+    `transformations/` holds the `@dp.table`-decorated dataset definitions in `bronze/`
+    and `silver/` subfolders — layer-first, so a future `gold/` that joins across
+    entities has a peer folder to live in. These files are thin wrappers: read the
+    upstream table, call a `whoz_ingestion` function, return the result.
+  * `src/whoz_ingestion/`: everything shared, imported by the pipeline **and** by the
+    test suite — `shaping/<entity>.py` (the pure DataFrame-in/DataFrame-out row logic
+    plus each table's DDL constant) and `expectations.py` (the data quality rules as
+    data). Nothing here imports `pyspark.pipelines`, which is what keeps it testable;
+    see Testing below.
+
+    A sibling of the pipeline folder rather than a subfolder of it, because it has two
+    consumers and belongs to neither. It resolves under the same name in both: the
+    pipeline's `root_path` is `src` and `pyproject.toml`'s `pythonpath` names that same
+    folder, so `whoz_ingestion.shaping.profile` is one import path in a running pipeline
+    and in pytest alike — which is what makes a wrong prefix fail locally instead of at
+    deploy time. Keep those two settings in step.
 * `resources/`:  Resource configurations (jobs, pipelines, etc.), one pair per source.
 * `docs/`: Source data model analysis (`docs/whoz_profile_data_model.md`) and the
   step-by-step runbook for ingesting a new export (`docs/adding_a_source_entity.md`).
@@ -30,9 +42,25 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
   `layer3_rules/`), entity in the filename. See Testing below.
 * `fixtures/`: Sample source records the tests run against, one folder per source entity.
 
-## The Whoz profile pipeline
+## The Whoz source
 
-`whoz_ingestion_etl` lands the Whoz profile export and models it:
+Whoz exports several files. Each is its own **entity**: its own Auto Loader stream, its
+own schema location, its own bronze and silver tables, its own fixtures and tests. One
+pipeline, `whoz_ingestion_etl`, models all of them — they share the pipeline, not their
+tables. Two today, each with its own section below; a third would get a third section
+rather than extra rows in an existing table.
+
+| Entity | Export | Section |
+|---|---|---|
+| profile | the profile report | [Profile](#profile) |
+| talent | the talent report (carries a nested profile object) | [Talent](#talent) |
+
+What is true of all of them is at the end of this section, under "Common to every Whoz
+entity" — read it once rather than per entity.
+
+### Profile
+
+The profile export: one record per Whoz profile.
 
 | Layer  | Table | Grain |
 |---|---|---|
@@ -45,11 +73,46 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 | silver | `silver.whoz_profile_positions` | one row per job/mission |
 | silver | `silver.whoz_position_aptitude_refs` | (position, aptitude) bridge |
 | silver | `silver.whoz_profile_skill_ratings` | legacy `skillRatings` — verify before use |
+
+Code: `transformations/bronze/whoz_profiles.py`, `transformations/silver/whoz_profile.py`
+and `transformations/silver/whoz_profile_children.py` (the four child tables), over
+`whoz_ingestion/shaping/profile.py`. Landing config keys:
+`whoz.profiles.source_path`, `whoz.profiles.schema_path`.
+
+The field inventory and every type hazard behind the casts are in
+`docs/whoz_profile_data_model.md`. Read it before changing any of them.
+
+### Talent
+
+The talent export: one record per Whoz talent — a *person* in a workspace, where a
+profile is that person's CV-like content. A separate file with its own filename glob and
+its own schema location, not a variant of the profile export.
+
+| Layer  | Table | Grain |
+|---|---|---|
 | bronze | `bronze.whoz_talents` | one row per talent, full JSON (incl. the nested profile) in a VARIANT `payload` |
 | bronze | `bronze.whoz_talents_payload_shapes` | distinct key set × profile container type (drift monitor) |
 | silver | `silver.whoz_talents` | one row per talent, **current state only** — AUTO CDC (SCD1) upsert by `talent_id` |
 | silver | `silver.whoz_talent_versions` | one row per (talent, version), `__START_AT`/`__END_AT` validity — AUTO CDC (SCD2) |
 | silver | `silver.whoz_talent_workspace_history` | (talent, workspace membership period), from the source's `history[]` |
+
+Code: `transformations/bronze/whoz_talents.py` and
+`transformations/silver/whoz_talent.py`, over `whoz_ingestion/shaping/talent.py`.
+Landing config keys: `whoz.talents.source_path`, `whoz.talents.schema_path`.
+
+Two things about this entity that are not obvious from the table:
+
+* **The two "history" tables are not the same thing.** `whoz_talent_versions` is how the
+  talent *record* changed over time (AUTO CDC, derived). `whoz_talent_workspace_history`
+  is which workspaces the talent has belonged to, exploded from the source's own
+  `history[]` array.
+* **The nested `profile` object is deliberately not re-modelled.** `silver.whoz_talents`
+  lifts `profile_id` and a few cheap attributes and stops there; `silver.whoz_profiles`
+  is the one source of truth for profile content. The raw nested object stays in bronze's
+  VARIANT payload forever, so the decision is reversible without a re-ingest. The header
+  of `whoz_ingestion/shaping/talent.py` records what a reversal would have to cover.
+
+### Common to every Whoz entity
 
 `bronze`/`silver` schema names are literal and identical in **every** target — the
 isolation boundary is the catalog, not the schema (see "Environments" below). Every
@@ -57,14 +120,20 @@ table name in `transformations/**/*.py` is built from `CATALOG`/`BRONZE_SCHEMA`/
 `SILVER_SCHEMA` module-level constants (read from pipeline config via `spark.conf.get`),
 never hardcoded.
 
-The export is a pretty-printed JSON **array**, not JSONL, and it is polymorphic in
-several fields, so bronze reads it with `multiLine` + `singleVariantColumn` and silver
-casts lazily with `try_variant_get`. `docs/whoz_profile_data_model.md` explains why.
+Every export is a pretty-printed JSON **array**, not JSONL, and polymorphic in several
+fields, so bronze reads it with `multiLine` + `singleVariantColumn` and silver casts
+lazily with `try_variant_get`. `docs/whoz_profile_data_model.md` explains why in detail
+for the profile export; the same reasoning applies to the others.
 
-The landing folder is set in the pipeline's `configuration` block in
-`resources/whoz_ingestion_etl.pipeline.yml` (`whoz.profiles.source_path` and
-`whoz.profiles.schema_path`) — currently the shared `oxygen_dev.landing.source` volume,
-filtered to Whoz's files by filename glob.
+Landing folders are set per entity in the pipeline's `configuration` block in
+`resources/whoz_ingestion_etl.pipeline.yml` — all entities share the one
+`landing.source` volume and are separated by filename glob, but each has its **own**
+`schema_path`, since two Auto Loader streams must never share a checkpoint directory.
+
+> **Known open bug.** Those four paths are hardcoded to `/Volumes/oxygen_dev/...` instead
+> of being `${var.catalog}`-qualified, so a `test` or `prod` deploy reads *dev's* landing
+> volume. It has not bitten yet because only dev has been run against real files. Fix all
+> four together when you fix one.
 
 
 ## Getting started
@@ -185,7 +254,7 @@ makes it cover them. The per-entity `test_*_rules.py` files are the *behavioural
 your rules pass clean fixtures and fire on the records built to break them. Only you can
 write that half.
 
-Layer 3 is the one people skip, and it's the reason `utilities/expectations.py` exists —
+Layer 3 is the one people skip, and it's the reason `whoz_ingestion/expectations.py` exists —
 see "Data quality rules" below.
 
 ### Fixtures
@@ -234,7 +303,7 @@ GitHub's UTC runners, so the assertion passes locally and fails in CI.
 
 ### Data quality rules
 
-Every rule the pipeline enforces lives in `src/whoz_ingestion_etl/utilities/expectations.py`
+Every rule the pipeline enforces lives in `src/whoz_ingestion/expectations.py`
 as a `{name: SQL predicate}` dict, not as a decorator argument. Two things read those dicts:
 the pipeline, via `@dp.expect_all` / `@dp.expect_all_or_drop`, and the test suite. That
 indirection is the whole point — the module imports nothing, so a test can import it
@@ -264,7 +333,7 @@ close to DQX's own, so moving is additive rather than a rewrite.
 
 ### Adding a source entity
 
-The unit of extension is the **entity**, and the seam is `utilities/`. Everything generic
+The unit of extension is the **entity**, and the seam is `src/whoz_ingestion/`. Everything generic
 comes free: `tests/helpers.py` is entity-agnostic, and the hygiene tests in
 `tests/layer3_rules/test_rule_hygiene.py` iterate `ALL_RULE_SETS`, so registering your rules
 is enough to have every one of them checked for parseability, snake_case naming,
@@ -279,10 +348,10 @@ things nothing catches.
 1. **`fixtures/<entity>/{typical,hazards,violations}.json`** — real records, trimmed.
 2. **`conftest.py`** — one entry in `BRONZE_KEYS` (the identity columns and their JSON
    paths), one in `SOURCE_FILES`, and two one-line fixtures at the bottom.
-3. **`utilities/shaping/<entity>.py`** — `<ENTITY>_COLUMNS` (DDL), `<ENTITY>_HISTORY_COLUMNS`
+3. **`whoz_ingestion/shaping/<entity>.py`** — `<ENTITY>_COLUMNS` (DDL), `<ENTITY>_HISTORY_COLUMNS`
    if it gets an SCD2 table, and `shape_<entity>(bronze) -> DataFrame`. No `pyspark.pipelines`
    import, ever — that's what keeps it testable.
-4. **`utilities/expectations.py`** — `<ENTITY>_MUST_HOLD` / `<ENTITY>_SHOULD_HOLD`, both
+4. **`whoz_ingestion/expectations.py`** — `<ENTITY>_MUST_HOLD` / `<ENTITY>_SHOULD_HOLD`, both
    registered in `ALL_RULE_SETS`. Rule names must be unique project-wide. The one shared
    file you still edit, and deliberately so — see the doc for why.
 5. **`tests/layer1_shaping/test_<entity>_shaping.py`** — one test per hazard.
@@ -295,7 +364,7 @@ things nothing catches.
    a different route than production reads it.
 
 The talent entity is worth reading as the worked example, particularly
-`utilities/shaping/talent.py`'s header: it documents *what it deliberately does not model*
+`whoz_ingestion/shaping/talent.py`'s header: it documents *what it deliberately does not model*
 (the nested profile object) and why, which is the kind of decision that is invisible six
 months later.
 
@@ -304,10 +373,10 @@ months later.
 `pyspark.pipelines` (imported as `dp` in every file under `transformations/`) is only fully
 present inside a running Lakeflow pipeline: the expectation decorators don't exist in
 open-source PySpark, and the module-level `spark.conf.get` calls fail with no pipeline
-configuration. So the row-shaping logic lives in `utilities/`, which has no `pipelines`
-dependency at all and takes/returns plain DataFrames. Each `@dp.table` function is a thin
-wrapper: read the upstream table, call the `utilities` function, return the result. Test the
-`utilities` function; don't try to call the `@dp.table` one.
+configuration. So the row-shaping logic lives in `src/whoz_ingestion/`, which has no
+`pipelines` dependency at all and takes/returns plain DataFrames. Each `@dp.table` function
+is a thin wrapper: read the upstream table, call the `whoz_ingestion` function, return the
+result. Test the `whoz_ingestion` function; don't try to call the `@dp.table` one.
 
 ### What's covered today, and the next step
 
@@ -322,7 +391,7 @@ Not yet: the child tables (`whoz_profile_aptitudes`, `whoz_profile_positions`,
 `whoz_talent_workspace_history`). Their `spark.sql(...)` bodies still sit inline in
 `transformations/silver/`, so their rules get hygiene checks only — a rule naming a column
 that doesn't exist on those tables would still slip through. Pulling those bodies into
-`utilities/shaping/` the way `shaping/profile.py` and `shaping/talent.py` were done is the
+`whoz_ingestion/shaping/` the way `shaping/profile.py` and `shaping/talent.py` were done is the
 one change that closes it; the tests to add afterwards are already sketched in
 `tests/layer3_rules/test_rule_hygiene.py`'s header.
 

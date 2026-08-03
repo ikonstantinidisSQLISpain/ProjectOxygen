@@ -4,14 +4,15 @@ Unit tests for shape_talent(), the bronze -> silver row shaping behind
 silver.whoz_talents and silver.whoz_talent_versions.
 
 The talent export nests a whole profile object under `profile`. shape_talent deliberately
-does not re-model it — see utilities/shaping/talent.py's header — so most of what these
+does not re-model it — see whoz_ingestion/shaping/talent.py's header — so most of what these
 tests pin down is the *boundary*: which profile fields are lifted, what happens when the
 nesting isn't the shape we assumed, and that the talent's own attributes survive intact.
 """
 
 from helpers import to_utc_strings
 from pyspark.sql import DataFrame
-from utilities.shaping.talent import shape_talent
+
+from whoz_ingestion.shaping.talent import shape_talent
 
 
 def by_talent_id(df: DataFrame) -> dict:
