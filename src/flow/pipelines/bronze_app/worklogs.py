@@ -114,11 +114,11 @@ def load_worklogs():
         F.col("uid"),
         F.col("date"),
         F.col("number"),
-        F.explode(
+        F.posexplode( # posexplode adds the index as column
             F.col("subdata").astype(
                 ty.ArrayType(ty.VariantType())
             )
-        ).alias("subdata"),
+        ).alias("index", "subdata"),
         F.col("available_date"),
         F.col("date")
     )
@@ -136,19 +136,23 @@ def load_worklogs():
         F.col("uid"),
         F.col("date"),
         F.col("number"),
+        F.col("index"),
         F.col("subdata").cast(schema_subdata),
         F.col("available_date"),
         F.col("date"),
     )
 
     # We set the last array as columns
-
+    schema_2 = ty.MapType(
+        ty.StringType(),
+        schema_subdata
+    )
     # Same subset 1
     worklogs_sub_1 = worklogs_sub_1.select(
         F.col("uid"),
         F.col("date"),
         F.col("number"),
-        F.col("subdata").cast(schema_subdata),
+        F.explode(F.col("subdata").cast(schema_2)).alias("number_2", "subdata"),
         F.col("available_date"),
         F.col("date"),
     )
@@ -157,6 +161,7 @@ def load_worklogs():
         F.col("uid"),
         F.col("date"),
         F.col("number"),
+        F.col("number_2"),
         F.col("subdata.type").alias("worklog_type"),
         F.col("subdata.tbp_id").alias("tbp_id"),
         F.col("subdata.worklog").alias("worklog"),
@@ -171,6 +176,7 @@ def load_worklogs():
         F.col("uid"),
         F.col("date"),
         F.col("number"),
+        F.col("index"),
         F.col("subdata.type").alias("worklog_type"),
         F.col("subdata.tbp_id").alias("tbp_id"),
         F.col("subdata.worklog").alias("worklog"),
@@ -182,7 +188,7 @@ def load_worklogs():
 
     # Since they are the same dataset but splitted by rows, we will join them back in
 
-    worklogs_final = worklogs_sub_1.union(worklogs_sub_2)
+    worklogs_final = worklogs_sub_1.unionByName(worklogs_sub_2, allowMissingColumns=True)
 
     # lastly we add the worklogs_by_type data
     # by joining using the uid, date, number,
