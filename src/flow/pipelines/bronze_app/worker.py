@@ -2,13 +2,13 @@ import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 
 
-#CATALOG = spark.conf.get("catalog")
-#SCHEMA = spark.conf.get("schema")
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
+
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.worker",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.worker",
     comment=(
         "Raw worker data, formatted"
     ),
@@ -20,7 +20,7 @@ def create_bu_table():
 
     
     # We load the json
-    raw = spark.read.option("multiLine", True).json("/Volumes/oxygen_dev/landing/source/perso_workers_anonymized.json")
+    raw = spark.read.option("multiLine", True).json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/perso_workers_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(

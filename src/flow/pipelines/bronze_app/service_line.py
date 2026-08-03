@@ -2,13 +2,12 @@ import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 
 
-#CATALOG = spark.conf.get("catalog")
-#SCHEMA = spark.conf.get("schema")
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.service_lines",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.service_lines",
     comment=(
         "Raw service lines data, formatted"
     ),
@@ -21,7 +20,7 @@ def create_service_lines_table():
     
     # We load the json
     raw = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_service_line_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_service_line_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(
@@ -39,7 +38,7 @@ def create_service_lines_table():
 
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.service_lines_zones",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.service_lines_zones",
     comment=(
         "Raw service lines and zones relations data, formatted"
     ),
@@ -52,7 +51,7 @@ def create_service_lines_zones_table():
     
     # We load the json
     raw = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_service_line_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_service_line_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(
@@ -64,7 +63,7 @@ def create_service_lines_zones_table():
 
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.service_lines_departments",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.service_lines_departments",
     comment=(
         "Raw service lines and departments relations data, formatted"
     ),
@@ -77,7 +76,7 @@ def create_service_lines_departments_table():
     
     # We load the json
     raw = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_service_line_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_service_line_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(

@@ -2,13 +2,12 @@ import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 
 
-#CATALOG = spark.conf.get("catalog")
-#SCHEMA = spark.conf.get("schema")
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.entities",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.entities",
     comment=(
         "Raw entities data, formatted"
     ),
@@ -21,7 +20,7 @@ def create_entities_table():
     
     # We load the json
     raw = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_entity_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_entity_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(

@@ -2,13 +2,12 @@ import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 
 
-#CATALOG = spark.conf.get("catalog")
-#SCHEMA = spark.conf.get("schema")
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.departments",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.departments",
     comment=(
         "Raw departments data, formatted"
     ),
@@ -21,7 +20,7 @@ def create_departments_table():
     
     # We load the json
     raw = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_department_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_department_anonymized.json")
     # We let it infer the schema by itself and we select what we want
 
     df = raw.select(
@@ -37,13 +36,8 @@ def create_departments_table():
     return df
 
 
-#CATALOG = spark.conf.get("catalog")
-#SCHEMA = spark.conf.get("schema")
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
-
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.zones",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.zones",
     comment=(
         "Raw zones data, formatted"
     ),
@@ -56,9 +50,9 @@ def create_zones_table():
     
     # We load the json
     department = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_department_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_department_anonymized.json")
     service_line = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_service_line_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_service_line_anonymized.json")
     # We let it infer the schema by itself and we select what we want
     zones_d = department.select(F.explode(F.col("associated_zone")).alias("zone_id")).distinct()
     zones_sl = service_line.select(F.explode(F.col("associated_zone")).alias("zone_id")).distinct()

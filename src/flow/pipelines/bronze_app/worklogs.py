@@ -3,11 +3,12 @@ import pyspark.sql.functions as F
 import pyspark.sql.types as ty
 
 
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_app"
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.worklogs",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.worklogs",
     comment=(
         "Raw worklogs data, formatted"
     ),
@@ -17,7 +18,7 @@ SCHEMA = "bronze_app"
 )
 def load_worklogs():
 
-    path = "/Volumes/oxygen_dev/landing/source/onetbp_worklogs_anonymized.json"
+    path = f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/onetbp_worklogs_anonymized.json"
 
     schema = ty.StructType([
         ty.StructField("uid", ty.StringType(), False),
