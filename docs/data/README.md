@@ -221,9 +221,26 @@ Activity is not an entity you can find in the json but it is something we should
 | type_lib        | STRING | Label of the activity.                          |            |       |
 | activity        | STRING | Code that categorize the activity.              |            |       |
 | is_project      | BOOL   | If the activity is billable or not.             |            |       |
-| service_line_id | BIGINT | The service line which the activity belongs to. |            | FK    |
-| department_id   | BIGINT | The department which the activity belongs to.   |            | FK    |
 
+
+##### activity_service_line
+
+An activity may have multiple service lines, and a service line may have multiple activities.
+
+| Column          | Type   | Description                                     | Contraints | PK/FK |
+|-----------------|--------|-------------------------------------------------|------------|-------|
+| type_id         | STRING | Identifier of the activity.                     |            | PK FK |
+| service_line_id | BIGINT | The service line which the activity belongs to. |            | PK FK |
+
+
+##### activity_department
+
+An activity may have multiple departments, and a department may have multiple activities.
+
+| Column          | Type   | Description                                     | Contraints | PK/FK |
+|-----------------|--------|-------------------------------------------------|------------|-------|
+| type_id         | STRING | Identifier of the activity.                     |            | PK FK |
+| department_id   | BIGINT | The department which the activity belongs to.   |            | PK FK |
 
 #### timesheet
 
