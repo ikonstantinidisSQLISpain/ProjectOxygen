@@ -1,6 +1,6 @@
 resources:
   pipelines:
-    bronze_app:
+    bronze_data:
       name: bronze_data
       configuration:
         read.catalog: ${var.catalog}
@@ -8,4 +8,7 @@ resources:
         target.schema: "bronze_data"
       libraries:
         - glob:
-            include: "./src/flow/pipelines/bronze_data/**"
+            include: "../src/flow/pipelines/bronze_data/**"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: bronze_data

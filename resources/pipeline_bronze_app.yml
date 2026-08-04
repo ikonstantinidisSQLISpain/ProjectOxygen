@@ -8,4 +8,7 @@ resources:
         target.schema: "bronze_app"
       libraries:
         - glob:
-            include: "./src/flow/pipelines/bronze_app/**"
+            include: "../src/flow/pipelines/bronze_app/**"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: bronze_app

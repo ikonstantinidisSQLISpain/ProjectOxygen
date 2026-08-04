@@ -57,13 +57,13 @@ def create_zones_table():
     zones_d = department.select(F.explode(F.col("associated_zone")).alias("zone_id")).distinct()
     zones_sl = service_line.select(F.explode(F.col("associated_zone")).alias("zone_id")).distinct()
 
-    df = zones_d.union(zones_sl).distinct().select("zones_id").alias("id")
+    df = zones_d.union(zones_sl).distinct().select("zone_id").alias("id")
     return df
 
 
 
 @dp.table(
-    name=f"{CATALOG}.{SCHEMA}.department_zones",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.department_zones",
     comment=(
         "Raw departments and zones relations data, formatted"
     ),

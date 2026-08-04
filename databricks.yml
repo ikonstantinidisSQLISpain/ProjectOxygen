@@ -86,3 +86,5 @@ targets:
       # sp-oxygen-cicd: deploys this target from .github/workflows/databricks-cd.yml
       - service_principal_name: 80c15587-d8a7-4f9f-bb71-5aff5c5104e4
         level: CAN_MANAGE
+      - user_name: mmolinadiaz@sqli.com
+        level: CAN_MANAGE
