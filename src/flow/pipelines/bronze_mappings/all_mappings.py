@@ -54,20 +54,22 @@ def map_json_to_table(path):
 
 
 
-
+CATALOG = spark.conf.get("read.catalog")
+TARGET_SCHEMA = spark.conf.get("target.schema")
+READ_SCHEMA = spark.conf.get("read.schema")
 
 
 PATHS = [
-    "/Volumes/oxygen_dev/landing/source/mapping_bucu_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_company_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_department_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_emails.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_entity_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_ids.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_service_line_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_site_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_skill_names.json",
-    "/Volumes/oxygen_dev/landing/source/mapping_society_names.json"
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_bucu_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_company_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_department_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_emails.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_entity_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_ids.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_service_line_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_site_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_skill_names.json",
+    f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/mapping_society_names.json"
 ]
 
 def get_table_name(path):
@@ -81,15 +83,12 @@ def get_table_name(path):
     table_name_str = "_".join(table_name)
     return table_name_str
 
-CATALOG = "churndefender_poc"
-SCHEMA = "bronze_mapping"
-
 def pipe_builder(path):
 
     table_name = get_table_name(path)
     print(path, table_name)
     @dp.table(
-        name=f"{CATALOG}.{SCHEMA}.{table_name}",
+        name=f"{CATALOG}.{TARGET_SCHEMA}.{table_name}",
         comment=(
             f"Raw mappings {table_name}"
         ),

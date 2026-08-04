@@ -1,0 +1,11 @@
+resources:
+  pipelines:
+    bronze_app:
+      name: bronze_mapping
+      configuration:
+        read.catalog: ${var.catalog}
+        read.schema: "landing"
+        target.schema: "bronze_mapping"
+      libraries:
+        - glob:
+            include: "./src/flow/pipelines/bronze_mappings/**"
