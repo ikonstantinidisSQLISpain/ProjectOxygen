@@ -59,7 +59,7 @@ def load_csv_data(name):
 def pipe_builder(name):
 
     @dp.table(
-        name=f"churndefender_poc.{TARGET_SCHEMA}.{name}",
+        name=f"{CATALOG}.{TARGET_SCHEMA}.{name}",
         comment=(
         f"Raw {name} data, formatted"
         ),
