@@ -61,7 +61,7 @@ def create_zones_table():
 
 
 @dp.table(
-    name=f"{CATALOG}.{TARGET_SCHEMA}.department_zones",
+    name=f"{CATALOG}.{TARGET_SCHEMA}.department_service_lines_zones",
     comment=(
         "Raw departments and zones relations data, formatted"
     ),
@@ -71,9 +71,13 @@ def create_zones_table():
 )
 def create_departments_zones_tables():
     department = spark.read.option("multiLine", True)\
-                    .json("/Volumes/oxygen_dev/landing/source/analytic_department_anonymized.json")
+                    .json(f"/Volumes/{CATALOG}/{READ_SCHEMA}/source/analytic_department_anonymized.json")
 
-    df = department.select(F.col("id"), F.explode(F.col("associated_zone")).alias("zone_id")).dropna(how="any")
+    df = department.select(
+        F.col("id"),
+        F.explode(F.col("associated_service_line")).alias("service_line_id"),
+        F.explode(F.col("associated_zone")).alias("zone_id")
+    ).dropna(how="any")
     return df
 
 

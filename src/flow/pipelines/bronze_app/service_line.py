@@ -33,7 +33,7 @@ def create_service_lines_table():
     return df
 
 
-
+"""
 @dp.table(
     name=f"{CATALOG}.{TARGET_SCHEMA}.service_lines_zones",
     comment=(
@@ -81,3 +81,5 @@ def create_service_lines_departments_table():
         F.explode(F.col("associated_practice")).alias("department_id")
     ).dropna("any")
     return df
+
+"""

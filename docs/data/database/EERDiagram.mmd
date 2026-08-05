@@ -57,7 +57,6 @@ erDiagram
         VARIANT employee_category
     }
 
-    department || -- o{ zone : has
     worker }| -- || bu : works_on
     worker }| -- || site : is_in
     worker }o -- o| worker : has_tl_or_rh
@@ -70,7 +69,15 @@ erDiagram
         STRING name
     }
 
-    service_line }o -- o{ zone : has
+    department_service_line_zone {
+        BIGINT department_id PK, FK
+        BIGINT service_line_id PK, FK
+        BIGINT zone_id PK, FK
+    }
+
+    department }| -- || department_service_line_zone : has
+    service_line }| -- || department_service_line_zone : has
+    zone }| -- || department_service_line_zone : has
 
     collab_status {
         BIGINT worker_id PK, FK

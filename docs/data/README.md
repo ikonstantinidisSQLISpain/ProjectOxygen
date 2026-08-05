@@ -137,16 +137,6 @@ Relations with previous entities:
 | active | BOOL   | If the department is active or not.  |            |       |
 
 
-##### Department_Zone
-
-The relationsip between each department and each zone.
-
-| Column        | Type   | Description                   | Contraints | PK/FK |
-|---------------|--------|-------------------------------|------------|-------|
-| department_id | BIGINT | Identifier of the department. |            | PK FK |
-| zone_id       | BIGINT | Identifier of the zone        |            | PK FK |
-
-
 #### Worker
 
 | Column                   | Type    | Description                              | Contraints | PK/FK | Notes                                                                                                |
@@ -185,18 +175,14 @@ The relationsip between each department and each zone.
 | active | BOOL   | If the service line is active or not |            |       |
 | name   | STRING | Name of the service line             |            |       |
 
-##### service_line_zone
+##### service_line_zone_department
+
+The combination of each department working on each service line, at each zone
 
 | Column          | Type   | Description                    | Contraints | PK/FK |
 |-----------------|--------|--------------------------------|------------|-------|
 | service_line_id | BIGINT | Identifier of the service line |            | PK FK |
 | zone_id         | BIGINT | Identifier of the zone         |            | PK FK |
-
-##### service_line_department
-
-| Column          | Type   | Description                    | Contraints | PK/FK |
-|-----------------|--------|--------------------------------|------------|-------|
-| service_line_id | BIGINT | Identifier of the service line |            | PK FK |
 | department_id   | BIGINT | Identifier of the department   |            | PK FK |
 
 
