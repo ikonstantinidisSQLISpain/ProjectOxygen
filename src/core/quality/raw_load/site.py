@@ -1,4 +1,8 @@
+"""
+In this case, it is the same as entities or societies, the JSON file contains the data in JSON format.
 
+To check that the data from site was loaded correctly, we have to check that the number of distinct sites in the original data matches both the number of distinct sites in the table, which, at the same tiem should match the number of rows.
+"""
 from src.core.loaders.raw_reader import RawReader
 
 def check_site_load(sparkSession,
