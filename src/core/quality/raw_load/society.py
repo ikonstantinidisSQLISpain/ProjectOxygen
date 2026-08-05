@@ -21,4 +21,4 @@ def check_societies_load(sparkSession,
     unique_societies_count = raw_soc_df.select("id").distinct().count()
 
     assert row_count == unique_societies_count
-    return None
+    return "OK"

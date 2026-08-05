@@ -21,4 +21,4 @@ def check_entities_load(sparkSession,
     unique_entities_count = raw_ent_df.select("id").distinct().count()
 
     assert row_count == unique_entities_count
-    return None
+    return "OK"

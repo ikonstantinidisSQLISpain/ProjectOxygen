@@ -18,7 +18,7 @@ def bu_checks(sparkSession,
 
     raw_bu_df = RawReader.read_json(sparkSession, catalog, raw_schema, bu_file_name)
 
-    row_count = raw_bu.count()
+    row_count = raw_bu_df.count()
     unique_bu_count = raw_bu_df.select("id").distinct().count()
 
     assert row_count == unique_bu_count
@@ -28,7 +28,7 @@ def bu_checks(sparkSession,
     assert uniqueness_checking(raw_bu_df, "id", "society.id")
     assert uniqueness_checking(raw_bu_df, "id", "entity.id")
 
-    return None
+    return "OK"
 
 
 
