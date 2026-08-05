@@ -10,7 +10,7 @@ should match the number of rows.
 
 from src.core.loaders.raw_reader import RawReader
 
-def check_entities_load(sparkSession: pyspark.sql.SparkSession,
+def check_entities_load(sparkSession,
                         catalog: str,
                         raw_schema: str,
                         entities_file_name: str):

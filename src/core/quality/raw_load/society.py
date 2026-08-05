@@ -10,7 +10,7 @@ should match the number of rows.
 
 from src.core.loaders.raw_reader import RawReader
 
-def check_societies_load(sparkSession: pyspark.sql.SparkSession,
+def check_societies_load(sparkSession,
                          catalog: str,
                          raw_schema: str,
                          societies_file_name: str):

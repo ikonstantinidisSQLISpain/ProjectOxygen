@@ -11,7 +11,7 @@ from src.core.loaders.raw_reader import RawReader
 from src.core.quality.utils import uniqueness_checking
 
 
-def bu_checks(sparkSession: pyspark.sql.SparkSession,
+def bu_checks(sparkSession,
               catalog: str,
               raw_schema: str,
               bu_file_name: str):

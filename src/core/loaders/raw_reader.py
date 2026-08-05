@@ -3,7 +3,7 @@
 class RawReader():
 
     @staticmethod
-    def read_json(sparkSession: pyspark.sql.SparkSession,
+    def read_json(sparkSession,
                   catalog: str,
                   read_schema: str,
                   file_name: str):
