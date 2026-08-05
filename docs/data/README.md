@@ -154,6 +154,7 @@ The relationsip between each department and each zone.
 | id                       | BIGINT  | Identifier of the worker.                |            |   PK  |                                                                                                      |
 | active                   | BOOL    | If the worker is active or not.          |            |       |                                                                                                      |
 | start_date               | DATE    | Start date of the worker.                |            |       |                                                                                                      |
+| mail                 | STRING  | mail of the worker.                |            |       |                                                                                                      |
 | seniority_date           | TINYINT | Time since hire. Calculated.             |            |       |                                                                                                      |
 | job_title                | STRING  | Job title of the worker.                 |            |       |                                                                                                      |
 | fulltime_or_parttime     | STRING  | Self-explanatory                         |            |       | STRING until the value type is known                                                                 |

@@ -1,10 +1,8 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
+from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
-
-CATALOG = spark.conf.get("read.catalog")
-TARGET_SCHEMA = spark.conf.get("target.schema")
-READ_SCHEMA = spark.conf.get("read.schema")
 
 @dp.table(
     name=f"{CATALOG}.{TARGET_SCHEMA}.entities",

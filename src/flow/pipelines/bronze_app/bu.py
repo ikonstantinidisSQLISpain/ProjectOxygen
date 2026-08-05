@@ -1,11 +1,7 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
-
-
-CATALOG = spark.conf.get("read.catalog")
-TARGET_SCHEMA = spark.conf.get("target.schema")
-READ_SCHEMA = spark.conf.get("read.schema")
-
+from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
 @dp.table(
     name=f"{CATALOG}.{TARGET_SCHEMA}.bu",

@@ -1,11 +1,7 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
-
-
-CATALOG = spark.conf.get("read.catalog")
-TARGET_SCHEMA = spark.conf.get("target.schema")
-READ_SCHEMA = spark.conf.get("read.schema")
-
+from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
 @dp.table(
     name=f"{CATALOG}.{TARGET_SCHEMA}.worker",
@@ -16,7 +12,7 @@ READ_SCHEMA = spark.conf.get("read.schema")
         "quality":"bronze"
     }
 )
-def create_bu_table():
+def create_worker_table():
 
     
     # We load the json
@@ -27,6 +23,7 @@ def create_bu_table():
         F.col("id"), # Must be string cause IDs are strings
         F.col("active").astype("boolean"),
         F.col("start_date"),
+        F.col("mail"),
         F.col("seniority_date"),
         F.col("job_title"),
         F.col("fulltime_or_parttime"),
