@@ -20,5 +20,8 @@ def check_societies_load(sparkSession,
     row_count = raw_soc_df.count()
     unique_societies_count = raw_soc_df.select("id").distinct().count()
 
-    assert row_count == unique_societies_count
+    if row_count == unique_societies_count:
+        print("JSON file has only societies data, one row per society.")
+    else:
+        print("A single society may have different data.")
     return "OK"

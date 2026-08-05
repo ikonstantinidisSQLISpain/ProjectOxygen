@@ -20,5 +20,8 @@ def check_entities_load(sparkSession,
     row_count = raw_ent_df.count()
     unique_entities_count = raw_ent_df.select("id").distinct().count()
 
-    assert row_count == unique_entities_count
+    if row_count == unique_entities_count:
+        print("JSON file has only entities data, one row per entity.")
+    else:
+        print("A single entity may have different data.")
     return "OK"

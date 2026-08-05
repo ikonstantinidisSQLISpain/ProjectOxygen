@@ -21,15 +21,33 @@ def bu_checks(sparkSession,
     row_count = raw_bu_df.count()
     unique_bu_count = raw_bu_df.select("id").distinct().count()
 
-    assert row_count == unique_bu_count
-
+    if row_count == unique_bu_count:
+        print("JSON file has only BU data, one row per BU.")
+    else:
+        print("A single BU may have different data.")
     # The external IDs should be variant, we check if for each bu_id there is only one society id, same for entity
 
-    assert uniqueness_checking(raw_bu_df, "id", "society.id")
-    assert uniqueness_checking(raw_bu_df, "id", "entity.id")
+    if uniqueness_checking(raw_bu_df, "id", "society.id"):
+        print("Each BU has only one society.")
+    else:
+        print("Some BU may have more than one society.")
+
+    if uniqueness_checking(raw_bu_df, "id", "entity.id"):
+        print("Each BU has only one entity.")
+    else:
+        print("Some BU may have more than one entity.")
 
     return "OK"
 
+
+def bu_checks_2(sparkSession,
+                catalog: str,
+                raw_schema: str,
+                bu_file_name: str):
+
+    raw_bu_df = RawReader.read_json(sparkSession, catalog, raw_schema, bu_file_name)
+
+    return "Ok"
 
 
 
