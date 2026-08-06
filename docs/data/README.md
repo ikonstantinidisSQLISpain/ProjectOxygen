@@ -177,7 +177,7 @@ Relations with previous entities:
 
 ##### service_line_zone_department
 
-The combination of each department working on each service line, at each zone
+The combination of each department working on each service line, at each zone.
 
 | Column          | Type   | Description                    | Contraints | PK/FK |
 |-----------------|--------|--------------------------------|------------|-------|
