@@ -197,7 +197,20 @@ def load_worklogs():
         how="full"
     )
 
-    final = final.withColumnRenamed("number", "day")\
-                .withColumnRenamed("date", "year_month")\
-                .withColumnRenamed("worklog", "workload")
+    final = final.select(
+        F.col("uid").alias("worker_id"),
+        F.col("date").alias("year_month"),
+        F.col("number").alias("day"),
+        F.to_date(F.col("available_date"), "yyyy-MM-dd").alias("available_date"),
+        F.col("number_2"),
+        F.col("worklog_type"),
+        F.col("tbp_id"),
+        F.col("worklog").cast("float").alias("workload"),
+        F.col("project_code"),
+        F.col("project_name"),
+        F.col("index"), # Already int
+        F.col("abscence").cast("float"),
+        F.col("project").cast("float")
+    )
+
     return final

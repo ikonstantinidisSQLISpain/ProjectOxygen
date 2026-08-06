@@ -1,5 +1,6 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
+import pysparl.sql.types as ty
 from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
 CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
@@ -22,12 +23,12 @@ def create_worker_table():
     df = raw.select(
         F.col("id"), # Must be string cause IDs are strings
         F.col("active").astype("boolean"),
-        F.col("start_date"),
+        F.to_date(F.col("start_date"), "dd/MM/yyyy"),
         F.col("mail"),
-        F.col("seniority_date"),
+        F.to_date(F.col("seniority_date"), "dd/MM/yyyy"),
         F.col("job_title"),
         F.col("fulltime_or_parttime"),
-        F.col("productivity_coefficient"),
+        F.col("productivity_coefficient").cast("float"), # It is between 0 and 1
         F.col("gcm"),
         F.col("std_cost"),
         F.col("tariff"),
@@ -43,5 +44,33 @@ def create_worker_table():
         F.col("_metadata.file_name").alias("_source_file_name"),
         F.col("_metadata.file_size").alias("_source_file_size"),
         F.col("_metadata.file_modification_time").alias("_source_file_modified_at")
+    )
+
+    BASE_STR = """
+    {
+        amount_in_euros: null,
+        amount_in_local_currency: null,
+        local_currency: null,
+        local_currency_conv: null,
+        local_currency_rate: null
+    }
+    """.replace("\n", "").replace("\t", "")
+
+    BASE_STRUCT = ty.StructType([
+        ty.StructField("amount_in_euros", ty.IntegerType(), nullable=True),
+        ty.StructField("amount_in_local_currency", ty.IntegerType(), nullable=True),
+        ty.StructField("local_currency", ty.StringType(), nullable=True),
+        ty.StructField("local_currency_conv", ty.FloatType(), nullable=True),
+        ty.StructField("local_currency_rate", ty.FloatType(), nullable=True)
+    ])
+
+    df = df.withColumn(
+        "tariff",
+        F.regexp_replace(F.col("tariff"), "[]", BASE_STR)
+    )
+
+    df = df.withColumn(
+        "tariff",
+        F.from_json(F.col("tariff"), BASE_STRUCT)
     )
     return df
