@@ -196,4 +196,6 @@ def load_worklogs():
         on=["uid", "date", "number", "available_date"],
         how="full"
     )
+
+    final = final.withColumnRenamed("number", "day").withColumnRenamed("date", "year_month")
     return final
