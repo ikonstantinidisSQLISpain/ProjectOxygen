@@ -197,5 +197,7 @@ def load_worklogs():
         how="full"
     )
 
-    final = final.withColumnRenamed("number", "day").withColumnRenamed("date", "year_month")
+    final = final.withColumnRenamed("number", "day")\
+                .withColumnRenamed("date", "year_month")\
+                .withColumnRenamed("worklog", "workload")
     return final
