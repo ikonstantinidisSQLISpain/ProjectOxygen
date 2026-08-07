@@ -32,8 +32,12 @@ def positions_sql(source: str) -> str:
             try_variant_get(p.value, '$.endDate',   'date')   AS end_date,
             try_variant_get(p.value, '$.startDate', 'string') AS start_date_raw,
             try_variant_get(p.value, '$.endDate',   'string') AS end_date_raw,
-            try_cast(size(cast(p.value:aptitudeReferences as array<variant>)) as int)
-                                                              AS aptitude_reference_count,
+            -- NULL, not -1, when the key is absent. size(NULL) is -1 on Databricks and NULL
+            -- locally; see shaping/__init__.py's collection_size_sql for the measurement.
+            CASE WHEN try_variant_get(p.value, '$.aptitudeReferences', 'array<variant>') IS NULL
+                 THEN NULL
+                 ELSE size(try_variant_get(p.value, '$.aptitudeReferences', 'array<variant>'))
+            END                                               AS aptitude_reference_count,
             p.value                                           AS position_payload,
             b.ingested_at
         FROM {source} AS b,

@@ -15,6 +15,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from whoz_ingestion.contract import SCD2_COLUMNS, ddl, load_columns
+from whoz_ingestion.shaping import collection_size_sql
 
 # The declared schema of silver.whoz_profiles / silver.whoz_profile_history. The columns
 # themselves are data, in ../schemas/whoz_profile.yml; contract.ddl() renders them into the
@@ -50,7 +51,7 @@ def shape_profile(bronze: DataFrame) -> DataFrame:
         vg("$.versionName", "string").alias("version_name"),
         vg("$.main", "boolean").alias("is_main_version"),
         # ---- classification ----
-        vg("$.status", "string").alias("status"),                  # DRAFT|VALIDATED|SUBMITTED
+        vg("$.status", "string").alias("status"),  # DRAFT|VALIDATED|SUBMITTED
         vg("$.contentLanguage", "string").alias("content_language"),
         vg("$.permissionScope", "string").alias("permission_scope"),
         vg("$.travelRange", "string").alias("travel_range"),
@@ -63,8 +64,7 @@ def shape_profile(bronze: DataFrame) -> DataFrame:
         # ---- headline (1:1 embedded object; absent on ~25% of records) ----
         vg("$.headline.jobTitle", "string").alias("headline_job_title"),
         vg("$.headline.seekingOpportunities", "boolean").alias("seeking_opportunities"),
-        vg("$.headline.seekingOpportunitiesLastModifiedDate", "timestamp")
-        .alias("seeking_opportunities_updated_at"),
+        vg("$.headline.seekingOpportunitiesLastModifiedDate", "timestamp").alias("seeking_opportunities_updated_at"),
         vg("$.headline.permissionScope", "string").alias("headline_permission_scope"),
         # Fields below are null on 100% of records today. Kept so the column exists
         # the day Whoz starts populating them — costs nothing in Delta.
@@ -85,14 +85,21 @@ def shape_profile(bronze: DataFrame) -> DataFrame:
         vg("$.lastExplicitUpdate", "timestamp").alias("source_last_explicit_update_at"),
         vg("$.lastExplicitUpdateBy", "string").alias("source_last_explicit_update_by"),
         # ---- collection sizes: cheap, and they make quality drift obvious ----
-        F.expr("try_cast(size(cast(payload:aptitudes as array<variant>)) as int)")
-        .alias("aptitude_count"),
-        F.expr("try_cast(size(cast(payload:positions as array<variant>)) as int)")
-        .alias("position_count"),
-        F.expr("try_cast(size(cast(payload:skillRatings as array<variant>)) as int)")
-        .alias("skill_rating_count"),
-        F.expr("try_cast(size(cast(payload:qualificationIds as array<variant>)) as int)")
-        .alias("qualification_count"),
+        # NULL, not -1, when the key is absent: `size(NULL)` is -1 on Databricks and NULL on
+        # the local test engine, so these went through collection_size_sql after a deployed
+        # run showed the difference. See its docstring.
+        F.expr(collection_size_sql("try_variant_get(payload, '$.aptitudes', 'array<variant>')")).alias(
+            "aptitude_count"
+        ),
+        F.expr(collection_size_sql("try_variant_get(payload, '$.positions', 'array<variant>')")).alias(
+            "position_count"
+        ),
+        F.expr(collection_size_sql("try_variant_get(payload, '$.skillRatings', 'array<variant>')")).alias(
+            "skill_rating_count"
+        ),
+        F.expr(collection_size_sql("try_variant_get(payload, '$.qualificationIds', 'array<variant>')")).alias(
+            "qualification_count"
+        ),
         # No payload column in the OUTPUT. Bronze keeps the full raw VARIANT forever
         # (join back on profile_id) and the child tables explode it straight off bronze,
         # so nothing needs it here: both AUTO CDC flows discarded it anyway, and it is

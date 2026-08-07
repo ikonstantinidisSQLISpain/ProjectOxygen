@@ -20,9 +20,27 @@ resources:
       # nothing else under src/ is executed just for being on the path.
       root_path: "../src"
 
+      # ONE GLOB PER LAYER, not a single `transformations/**`, and the difference is not
+      # cosmetic — it is a fix for a real update failure.
+      #
+      # `bundle deploy` only removes remote files it has a local sync snapshot for. Files
+      # uploaded by an older deploy lineage are orphaned in the workspace rather than deleted,
+      # and `transformations/**` matched those orphans as happily as the real ones. After the
+      # move to bronze/ + silver/ subfolders, a personal deploy still carried the pre-reorg
+      # flat modules (transformations/silver_whoz_talent.py and friends, importing the deleted
+      # `utilities` package), and the pipeline update failed with ModuleNotFoundError from a
+      # file that had not existed in git for weeks.
+      #
+      # Anchoring each glob at the layer folder means a stale sibling *outside* bronze/ or
+      # silver/ cannot be picked up at all, in any target, regardless of what is left over in
+      # the workspace. A future gold/ layer needs a third entry here — that is the cost, and
+      # it is worth paying for a failure mode whose error message names the wrong decade of
+      # the codebase.
       libraries:
         - glob:
-            include: ../src/whoz_ingestion_etl/transformations/**
+            include: ../src/whoz_ingestion_etl/transformations/bronze/**
+        - glob:
+            include: ../src/whoz_ingestion_etl/transformations/silver/**
 
       # Read by the transformation files through spark.conf.get, so these can change
       # without touching the Python source. Every table's name is schema-qualified

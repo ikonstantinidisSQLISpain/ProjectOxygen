@@ -46,3 +46,32 @@ Deliberately not empty: a zero-byte file is not deployed by `databricks bundle d
 would make this a namespace-package gap in the workspace copy only. Same trap as ../__init__.py
 documents at length.
 """
+
+
+def collection_size_sql(collection: str) -> str:
+    """SQL for the size of a collection that yields NULL — never -1 — when it is absent.
+
+    NEVER CALL size() DIRECTLY ON A POSSIBLY-NULL COLLECTION. `size(NULL)` is not portable:
+
+        Databricks Runtime / serverless   size(NULL) = -1
+        local open-source Spark 4.0       size(NULL) = NULL
+
+    That divergence is invisible to this project's test suite, because the tests run on the
+    local engine and see the NULL they expect. It was found by deploying: every `*_count`
+    column in silver landed as -1 where the schema comments promise NULL, and on the user
+    entity it fired `federation_count_at_most_one` on 1,173 real rows, because
+    `coalesce(size(<map form>), size(<array form>))` never reached the second branch — the
+    first returned -1, which coalesce treats as a perfectly good answer.
+
+    Measured on the deployed pipeline, not reasoned about: `silver.whoz_talents.tag_count` was
+    -1 on 3,629 of 4,116 rows before this helper existed.
+
+    Testing it: `spark.conf.set("spark.sql.legacy.sizeOfNull", True)` makes the local engine
+    behave like Databricks, which is what
+    tests/layer1_shaping/test_user_shaping.py's regression test uses. Without that setting a
+    local test cannot tell the two behaviours apart.
+
+    Takes and returns SQL text rather than a Column so the same fragment serves both the
+    DataFrame shaping modules (via F.expr) and the exploded child queries, which are SQL.
+    """
+    return f"CASE WHEN {collection} IS NULL THEN NULL ELSE size({collection}) END"

@@ -31,6 +31,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from whoz_ingestion.contract import SCD2_COLUMNS, ddl, load_columns
+from whoz_ingestion.shaping import collection_size_sql
 
 # The declared schema of silver.whoz_users / silver.whoz_user_versions. The columns are data
 # in ../schemas/whoz_user.yml, contract.ddl() renders them, and they must match shape_user()'s
@@ -49,15 +50,11 @@ def vg(path, target_type):
 def count_of(path: str) -> "F.Column":
     """Number of entries in a collection that may be a MAP *or* an empty ARRAY.
 
-    DO NOT REPLACE THIS WITH shaping/talent.py's size_of(), which would raise at runtime.
-    That helper is `try_cast(size(cast(payload:<path> as array<variant>)) as int)`, and the
-    try_cast guards only the outer int conversion — the inner `cast(<variant> as ARRAY<...>)`
-    raises INVALID_VARIANT_CAST when the value is an object, rather than returning NULL.
-    Measured against this export: it fails on every record whose federationRoles is populated.
-    It is correct for talent and profile only because their collections are always arrays.
-
-    `try_variant_get` is the lenient form — it returns NULL when the value is not the
-    requested type — so asking for both shapes and coalescing gives the three answers we want:
+    DO NOT REPLACE THIS WITH a plain `cast(payload:<path> as array<variant>)`. That raises
+    INVALID_VARIANT_CAST when the value is an object rather than returning NULL, and it fails
+    on every record whose federationRoles is populated. `try_variant_get` is the lenient
+    form — NULL when the value is not the requested type — so asking for both shapes and
+    coalescing gives the three answers we want:
 
         populated (object form)  -> size of the map      (1, or 1-33 for workspaces)
         empty     (array form)   -> 0
@@ -65,16 +62,21 @@ def count_of(path: str) -> "F.Column":
 
     0 and NULL are deliberately different: "this user belongs to no workspaces" is not the
     same fact as "this export did not say", and only the sparse records produce the latter.
+
+    Both branches go through collection_size_sql because `size(NULL)` is -1 on Databricks and
+    NULL locally. Written the obvious way, the map branch returned -1 for every array-form
+    record, coalesce accepted it, and federation_count_at_most_one fired on 1,173 real rows.
+    See collection_size_sql's docstring — that is a deploy-only failure, and this is the
+    second-order reason it matters: coalesce cannot fall through a -1.
     """
-    return F.expr(
-        f"coalesce(size(try_variant_get(payload, '$.{path}', 'map<string,variant>')), "
-        f"size(try_variant_get(payload, '$.{path}', 'array<variant>')))"
-    )
+    map_form = f"try_variant_get(payload, '$.{path}', 'map<string,variant>')"
+    array_form = f"try_variant_get(payload, '$.{path}', 'array<variant>')"
+    return F.expr(f"coalesce({collection_size_sql(map_form)}, {collection_size_sql(array_form)})")
 
 
 def array_count_of(path: str) -> "F.Column":
     """size() of a collection that is always a plain array. NULL when the key is absent."""
-    return F.expr(f"size(try_variant_get(payload, '$.{path}', 'array<string>'))")
+    return F.expr(collection_size_sql(f"try_variant_get(payload, '$.{path}', 'array<string>')"))
 
 
 def federation(field: str) -> "F.Column":

@@ -32,6 +32,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from whoz_ingestion.contract import SCD2_COLUMNS, ddl, load_columns
+from whoz_ingestion.shaping import collection_size_sql
 
 # The declared schema of silver.whoz_talents / silver.whoz_talent_versions. Same shape as
 # PROFILE_COLUMNS in shaping/profile.py: the columns are data in ../schemas/whoz_talent.yml,
@@ -54,10 +55,19 @@ def vg(path, target_type):
 def size_of(path):
     """size() of a payload collection as an INT, NULL rather than an error if it isn't one.
 
-    Note NULL, not 0, when the key is absent — the same behaviour as the *_count columns in
+    NULL, not 0, when the key is absent — the same behaviour as the *_count columns in
     shaping/profile.py, and worth knowing before summing one of these downstream.
+
+    That was not true until it was measured on a deployed pipeline. This used to be
+    `try_cast(size(cast(payload:<path> as array<variant>)) as int)`, which has two faults:
+    the try_cast guards only the outer int conversion, and `size(NULL)` is **-1** on
+    Databricks Runtime while being NULL on the local engine the tests use. Result:
+    silver.whoz_talents.tag_count was -1 on 3,629 of 4,116 rows, and aspiration_count on
+    2,656, in direct contradiction of this docstring and of schemas/whoz_talent.yml.
+    collection_size_sql fixes both; see its docstring for why no local test could have caught
+    it, and for the conf setting that now does.
     """
-    return F.expr(f"try_cast(size(cast(payload:{path} as array<variant>)) as int)")
+    return F.expr(collection_size_sql(f"try_variant_get(payload, '$.{path}', 'array<variant>')"))
 
 
 def shape_talent(bronze: DataFrame) -> DataFrame:
@@ -94,8 +104,9 @@ def shape_talent(bronze: DataFrame) -> DataFrame:
         # This matters because the array form does not fail: every vg("$.profile.*") above
         # silently returns NULL, the pipeline stays green, and silver fills with talents that
         # appear to have no profile. See the profile_is_not_an_array DQX check.
-        F.regexp_extract(F.expr("schema_of_variant(payload:profile)"), r"^([A-Za-z]+)", 1)
-        .alias("profile_container_type"),
+        F.regexp_extract(F.expr("schema_of_variant(payload:profile)"), r"^([A-Za-z]+)", 1).alias(
+            "profile_container_type"
+        ),
         # ---- audit fields from the source system ----
         vg("$.createdDate", "timestamp").alias("source_created_at"),
         vg("$.createdBy", "string").alias("source_created_by"),
