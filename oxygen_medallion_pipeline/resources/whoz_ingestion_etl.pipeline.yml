@@ -41,13 +41,24 @@ resources:
         # see each other's files. Its own schemaLocation — two streams must never share a
         # checkpoint directory.
         #
-        # KNOWN OPEN BUG, all four paths above and below: the volume is hardcoded to
-        # oxygen_dev instead of being ${var.catalog}-qualified, so a test or prod deploy
-        # reads *dev's* landing volume. Only dev has been run against real files, which is
-        # why it hasn't bitten yet. Fix all four together — a half-fix is worse, since the
-        # two entities would then disagree about which environment they are in.
+        # KNOWN OPEN BUG, every path in this block: the volume is hardcoded to oxygen_dev
+        # instead of being ${var.catalog}-qualified, so a test or prod deploy reads *dev's*
+        # landing volume. Only dev has been run against real files, which is why it hasn't
+        # bitten yet. Fix them ALL together — a half-fix is worse, since the entities would
+        # then disagree about which environment they are in.
+        #
+        # This was four paths when the pipeline had two entities and is six now that user is
+        # modelled. The new entity follows the existing (wrong) pattern deliberately, so the
+        # fix stays one reviewable commit with one deploy test, rather than being smeared
+        # across the change that added it.
         whoz.talents.source_path: /Volumes/oxygen_dev/landing/source/
         whoz.talents.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_talents_schema
+        # User export — the login accounts behind the talents. Same shared landing volume,
+        # its own filename glob (see FILE_NAME_GLOB in transformations/bronze/whoz_users.py)
+        # and its OWN schemaLocation: two Auto Loader streams must never share a checkpoint
+        # directory.
+        whoz.users.source_path: /Volumes/oxygen_dev/landing/source/
+        whoz.users.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_users_schema
         whoz.catalog: ${var.catalog}
         whoz.bronze_schema: ${var.bronze_schema}
         whoz.silver_schema: ${var.silver_schema}

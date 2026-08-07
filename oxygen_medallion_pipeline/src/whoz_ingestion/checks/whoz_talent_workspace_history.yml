@@ -1,0 +1,34 @@
+# silver.whoz_talent_workspace_history — the source's own history[] array.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+
+# The grain is the (talent, workspace) pair — there is no natural id on the child — so both
+# halves of the key have to be present for the row to mean anything.
+#
+# ON for_each_column AND CHECK NAMES: measured, not assumed. DQX expands this into one check
+# per column but keeps the explicit `name:` verbatim on each, so both expansions report as
+# `workspace_history_keys_not_null` and the one name still identifies the check in a metric
+# label and in the test suite's expected-count dicts. The per-column detail is not lost —
+# it lands in the result struct's `message` ("Column 'workspace_id' value is null") and
+# `columns` fields. That is why this is a single for_each_column check rather than two
+# separately-named is_not_null checks: name preservation survives, and one name is what the
+# old composite predicate had.
+- name: workspace_history_keys_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    for_each_column: [talent_id, workspace_id]
+
+# Keep BOTH the parsed date and the raw string (see shaping/children.py): a `since` value the
+# cast cannot handle leaves since_date NULL while since_raw still holds the string, and this
+# is what makes that visible instead of indistinguishable from an absent value. Null-safe as
+# written — IS NOT NULL never evaluates to NULL — so DQX and the predicate it replaces flag
+# exactly the same rows.
+- name: since_date_parsed
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: since_raw IS NULL OR since_date IS NOT NULL
+      msg: >-
+        the source sent a `since` value the DATE cast could not parse, so since_date is NULL
+        while since_raw still holds the original string

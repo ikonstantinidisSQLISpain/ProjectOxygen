@@ -1,0 +1,92 @@
+# The declared schema of silver.whoz_users and — with contract.SCD2_COLUMNS appended —
+# silver.whoz_user_versions.
+#
+# Same one rule as whoz_profile.yml and whoz_talent.yml: this list must match shape_user()'s
+# SELECT (../shaping/user.py) column for column, type for type, and IN ORDER, because AUTO CDC
+# matches source to target positionally as well as by name.
+# tests/layer2_contract/test_user_contract.py asserts exactly that.
+#
+# Distributions named here describe the export analysed on 2026-07-27 (4,036 records) — see
+# docs/whoz_user_data_model.md for the measurements behind every cast. Not a guarantee.
+columns:
+  # ---- identity (already lifted out of the payload by bronze) ----
+  - name: user_id
+    type: STRING NOT NULL
+    comment: Whoz user account ID, stable primary key. NOT NULL is enforced upstream by user_id_not_null, a criticality:error DQX check, so a null-key row is withheld and quarantined
+  - name: idp_id
+    type: STRING
+    comment: Identity-provider UUID for this account; absent on 42% of records (1,691 of 4,036), so NULL here means "no federated identity recorded"
+
+  # ---- account attributes ----
+  - name: username
+    type: STRING
+    comment: Login address (an email). Personal data — the historical values in formerUsernames are deliberately NOT modelled, see former_username_count
+  - name: is_enabled
+    type: BOOLEAN
+    comment: Whether the account may sign in; both true and false occur
+  - name: is_removed
+    type: BOOLEAN
+    comment: Soft-delete flag, false on every record in the analysed export. user_not_removed warns if that changes, because a removed account alters what this table's grain means
+  - name: language
+    type: STRING
+    comment: UI locale; en-GB, en-US and fr-FR observed. Not checked — a fourth locale is expected, not suspicious
+  - name: theme
+    type: STRING
+    comment: UI theme; LIGHT on every record today. Carried, not checked — a second theme is not a data-quality event
+
+  # ---- federation: flattened, because it is strictly 1:1 today ----
+  # Every populated record has exactly one federation entry holding exactly one role, and the
+  # whole export references a single federationId. federation_count is the tripwire on that
+  # assumption; see docs/whoz_user_data_model.md §3 for what to do when it fires.
+  - name: federation_id
+    type: STRING
+    comment: Tenant identifier, lifted out of the federationRoles map; a single value across this whole export (single-tenant)
+  - name: federation_role
+    type: STRING
+    comment: Role held in that federation; MEMBER on 2,846 records and ADMIN on 17
+  - name: federation_count
+    type: INT
+    comment: Number of federationRoles entries; 1 on every populated record today. federation_count_at_most_one warns above 1, at which point federation_id/federation_role stop being sufficient and this needs its own child table
+
+  # ---- timestamps ----
+  # Second- and millisecond-precision values both occur in the same file, so these are cast
+  # rather than parsed with a format string, which would handle only one of them.
+  - name: last_connection_at
+    type: TIMESTAMP
+    comment: Last sign-in; the key is absent on 1,701 of 4,036 records, and "never signed in" is indistinguishable from "key absent"
+
+  # ---- audit fields from the source system ----
+  - name: source_created_at
+    type: TIMESTAMP
+    comment: When Whoz created the account
+  - name: source_created_by
+    type: STRING
+    comment: Whoz user ObjectId that created this account; 13 distinct values across the export
+  - name: source_last_modified_at
+    type: TIMESTAMP
+    comment: Whoz's own last-modified time. AUTO CDC sequences by THIS, not by ingested_at, so a late-landing backfill cannot overwrite newer data
+  - name: source_last_modified_by
+    type: STRING
+    comment: Whoz user ObjectId that last modified this account. The source sends the literal STRING 'null' on 983 records; shape_user maps that to a real NULL, so this column never contains the four-character sentinel
+
+  # ---- collection sizes: cheap, and they make quality drift obvious ----
+  - name: workspace_role_count
+    type: INT
+    comment: Number of workspace memberships; 1-33 where present. The memberships themselves are silver.whoz_user_workspace_roles
+  - name: former_username_count
+    type: INT
+    comment: >-
+      Number of previous login addresses. The VALUES are deliberately not modelled — they are
+      personal data and some encode GDPR erasure requests. The raw array stays in the bronze
+      VARIANT payload, so a child table remains possible without a re-ingest
+  - name: agentic_studio_role_count
+    type: INT
+    comment: size(agenticStudioRoles[]) at the source; empty on every record today, and agentic_studio_roles_still_empty warns the first time it is not
+
+  # ---- lineage ----
+  - name: source_file
+    type: STRING
+    comment: "Bronze lineage: which landed file this user version came from"
+  - name: ingested_at
+    type: TIMESTAMP
+    comment: "Bronze lineage: when this snapshot was ingested, not when Whoz generated it"

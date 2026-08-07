@@ -6,8 +6,8 @@ sources: each source is a self-contained pipeline + refresh job under `resources
 
 Sources today:
 
-* **Whoz** — two export files ingested by one pipeline: **profile** and **talent**. See
-  "The Whoz source" below, which has a section per entity.
+* **Whoz** — three export files ingested by one pipeline: **profile**, **talent** and
+  **user**. See "The Whoz source" below, which has a section per entity.
 
 To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>.job.yml`
 (picked up automatically by `databricks.yml`'s `include: resources/*.yml`) and the
@@ -24,10 +24,14 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
     entities has a peer folder to live in. These files are thin wrappers: read the
     upstream table, call a `whoz_ingestion` function, return the result.
   * `src/whoz_ingestion/`: everything shared, imported by the pipeline **and** by the
-    test suite — `shaping/<entity>.py` (the pure DataFrame-in/DataFrame-out row logic
-    plus each table's DDL constant) and `expectations.py` (the data quality rules as
-    data). Nothing here imports `pyspark.pipelines`, which is what keeps it testable;
-    see Testing below.
+    test suite — `shaping/<entity>.py` (the pure DataFrame-in/DataFrame-out row logic),
+    `shaping/<table>.py` (one module per exploded child table, named for the entity that
+    owns it, each returning importable SQL text), `schemas/<entity>.yml` + `contract.py`
+    (each table's columns as data, rendered into the DDL string Lakeflow wants),
+    `checks/<dataset>.yml` + `checks.py` (the data quality checks, as native Databricks
+    Labs DQX check lists) and `dq.py` (the pipeline's one lazily-built DQEngine).
+    Nothing here imports `pyspark.pipelines`, which is what keeps it testable; see
+    Testing below.
 
     A sibling of the pipeline folder rather than a subfolder of it, because it has two
     consumers and belongs to neither. It resolves under the same name in both: the
@@ -36,8 +40,12 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
     and in pytest alike — which is what makes a wrong prefix fail locally instead of at
     deploy time. Keep those two settings in step.
 * `resources/`:  Resource configurations (jobs, pipelines, etc.), one pair per source.
-* `docs/`: Source data model analysis (`docs/whoz_profile_data_model.md`) and the
-  step-by-step runbook for ingesting a new export (`docs/adding_a_source_entity.md`).
+* `docs/`: **Start with `docs/how_it_works.md`** — the mental model behind the folder split,
+  the three test layers and the quality checks, and the one place that explains *why* the
+  pipeline is shaped this way. Then `docs/adding_a_source_entity.md` (the step-by-step
+  runbook for ingesting a new export) and the per-entity source analyses,
+  `docs/whoz_profile_data_model.md` and `docs/whoz_user_data_model.md`, which hold the field
+  inventory and every type hazard behind the casts.
 * `tests/`: The test suite — one folder per layer (`layer1_shaping/`, `layer2_contract/`,
   `layer3_rules/`), entity in the filename. See Testing below.
 * `fixtures/`: Sample source records the tests run against, one folder per source entity.
@@ -47,13 +55,14 @@ To add a new source, add `resources/<source>.pipeline.yml` + `resources/<source>
 Whoz exports several files. Each is its own **entity**: its own Auto Loader stream, its
 own schema location, its own bronze and silver tables, its own fixtures and tests. One
 pipeline, `whoz_ingestion_etl`, models all of them — they share the pipeline, not their
-tables. Two today, each with its own section below; a third would get a third section
+tables. Three today, each with its own section below; a fourth would get a fourth section
 rather than extra rows in an existing table.
 
 | Entity | Export | Section |
 |---|---|---|
 | profile | the profile report | [Profile](#profile) |
 | talent | the talent report (carries a nested profile object) | [Talent](#talent) |
+| user | the user report — login accounts, **not** people | [User](#user) |
 
 What is true of all of them is at the end of this section, under "Common to every Whoz
 entity" — read it once rather than per entity.
@@ -73,11 +82,21 @@ The profile export: one record per Whoz profile.
 | silver | `silver.whoz_profile_positions` | one row per job/mission |
 | silver | `silver.whoz_position_aptitude_refs` | (position, aptitude) bridge |
 | silver | `silver.whoz_profile_skill_ratings` | legacy `skillRatings` — verify before use |
+| silver | `silver.whoz_profiles_quarantine` | rows any DQX check fired on, + `_errors`/`_warnings` |
+| silver | `silver.whoz_profile_aptitudes_quarantine` | ditto, for aptitudes |
+| silver | `silver.whoz_profile_positions_quarantine` | ditto, for positions |
+| silver | `silver.whoz_position_aptitude_refs_quarantine` | ditto, for the bridge |
 
-Code: `transformations/bronze/whoz_profiles.py`, `transformations/silver/whoz_profile.py`
-and `transformations/silver/whoz_profile_children.py` (the four child tables), over
-`whoz_ingestion/shaping/profile.py`. Landing config keys:
-`whoz.profiles.source_path`, `whoz.profiles.schema_path`.
+The four `_quarantine` tables are not dead-letter queues: a `warn`-level row is in the
+quarantine table **and** in the silver table. See "Data quality checks" below for what they
+contain and how to query them.
+
+Code: `transformations/bronze/whoz_profiles.py` for bronze, and one file per silver table —
+`transformations/silver/whoz_profile.py` (the profile grain and both AUTO CDC flows), plus
+`whoz_profile_aptitudes.py`, `whoz_profile_positions.py`, `whoz_position_aptitude_refs.py`,
+`whoz_profile_skill_ratings.py` and `whoz_profile_completion_rules.py` alongside it. The row
+logic is in `whoz_ingestion/shaping/profile.py` and one `shaping/profile_<collection>.py` per
+child table. Landing config keys: `whoz.profiles.source_path`, `whoz.profiles.schema_path`.
 
 The field inventory and every type hazard behind the casts are in
 `docs/whoz_profile_data_model.md`. Read it before changing any of them.
@@ -95,10 +114,14 @@ its own schema location, not a variant of the profile export.
 | silver | `silver.whoz_talents` | one row per talent, **current state only** — AUTO CDC (SCD1) upsert by `talent_id` |
 | silver | `silver.whoz_talent_versions` | one row per (talent, version), `__START_AT`/`__END_AT` validity — AUTO CDC (SCD2) |
 | silver | `silver.whoz_talent_workspace_history` | (talent, workspace membership period), from the source's `history[]` |
+| silver | `silver.whoz_talents_quarantine` | rows any DQX check fired on, + `_errors`/`_warnings` |
+| silver | `silver.whoz_talent_workspace_history_quarantine` | ditto, for the workspace history |
 
-Code: `transformations/bronze/whoz_talents.py` and
-`transformations/silver/whoz_talent.py`, over `whoz_ingestion/shaping/talent.py`.
-Landing config keys: `whoz.talents.source_path`, `whoz.talents.schema_path`.
+Code: `transformations/bronze/whoz_talents.py`, plus one file per silver table —
+`transformations/silver/whoz_talent.py` (the talent grain and both AUTO CDC flows) and
+`whoz_talent_workspace_history.py`. Row logic in `whoz_ingestion/shaping/talent.py` and
+`shaping/talent_workspace_history.py`. Landing config keys: `whoz.talents.source_path`,
+`whoz.talents.schema_path`.
 
 Two things about this entity that are not obvious from the table:
 
@@ -111,6 +134,51 @@ Two things about this entity that are not obvious from the table:
   is the one source of truth for profile content. The raw nested object stays in bronze's
   VARIANT payload forever, so the decision is reversible without a re-ingest. The header
   of `whoz_ingestion/shaping/talent.py` records what a reversal would have to cover.
+
+### User
+
+The user export: one record per Whoz **login account**. A separate file with its own filename
+glob and its own schema location.
+
+> **A user is not a talent, and the two are not 1:1 in either direction.** `silver.whoz_talents`
+> is a *person in a workspace*; this is the account they sign in with. Measured on the export
+> analysed 2026-07-27: 1,760 of 4,036 accounts have no talent (service and administrative
+> logins), and 1,841 of 4,116 talents have no account. Any headcount built on
+> `silver.whoz_users` is counting **accounts, not people** — use the talent tables for people.
+
+| Layer  | Table | Grain |
+|---|---|---|
+| bronze | `bronze.whoz_users` | one row per account, full JSON in a VARIANT `payload` |
+| bronze | `bronze.whoz_users_payload_shapes` | distinct key set × the two role-map container types (drift monitor) |
+| silver | `silver.whoz_users` | one row per account, **current state only** — AUTO CDC (SCD1) upsert by `user_id` |
+| silver | `silver.whoz_user_versions` | one row per (user, version), `__START_AT`/`__END_AT` validity — AUTO CDC (SCD2) |
+| silver | `silver.whoz_user_workspace_roles` | (user, workspace, role) |
+| silver | `silver.whoz_users_quarantine` | rows any DQX check fired on, + `_errors`/`_warnings` |
+| silver | `silver.whoz_user_workspace_roles_quarantine` | ditto, for the workspace roles |
+
+Code: `transformations/bronze/whoz_users.py`, plus one file per silver table —
+`transformations/silver/whoz_user.py` (the account grain and both AUTO CDC flows) and
+`whoz_user_workspace_roles.py`. Row logic in `whoz_ingestion/shaping/user.py` and
+`shaping/user_workspace_roles.py`. Landing config keys: `whoz.users.source_path`,
+`whoz.users.schema_path`.
+
+Three things about this entity that are not obvious from the table:
+
+* **The join to talents lives on the talent side.** `silver.whoz_users` carries no
+  `talent_id` — 44% of accounts would have a null one. Join from `whoz_talents.user_id`,
+  which resolves to a known account on all 2,275 talents that carry it (0 orphans, verified).
+* **`workspaceRoles` and `federationRoles` arrive as an object *or* an empty array**, the
+  same polymorphism as the profile export's `completionDetails`. Workspace membership becomes
+  the child table above; federation is flattened onto the account row because it is strictly
+  one entry per record today, and `federation_count_at_most_one` is the check that fires the
+  day that stops being true.
+* **`silver.whoz_users_quarantine` is expected to hold exactly one `_errors` row.** The export
+  carries a single all-null record, which `user_id_not_null` withholds. That is correct
+  behaviour, not a defect to chase.
+
+The field inventory, every measurement behind the casts, and what this entity deliberately
+does *not* model (former usernames, agentic-studio roles) are in
+`docs/whoz_user_data_model.md`. Read it before changing any of them.
 
 ### Common to every Whoz entity
 
@@ -130,10 +198,13 @@ Landing folders are set per entity in the pipeline's `configuration` block in
 `landing.source` volume and are separated by filename glob, but each has its **own**
 `schema_path`, since two Auto Loader streams must never share a checkpoint directory.
 
-> **Known open bug.** Those four paths are hardcoded to `/Volumes/oxygen_dev/...` instead
-> of being `${var.catalog}`-qualified, so a `test` or `prod` deploy reads *dev's* landing
-> volume. It has not bitten yet because only dev has been run against real files. Fix all
-> four together when you fix one.
+> **Known open bug.** All **six** of those paths are hardcoded to `/Volumes/oxygen_dev/...`
+> instead of being `${var.catalog}`-qualified, so a `test` or `prod` deploy reads *dev's*
+> landing volume. It has not bitten yet because only dev has been run against real files.
+> Fix them all together when you fix one — a half-fix is worse, since the entities would
+> then disagree about which environment they are in. It was four paths before the `user`
+> entity; that entity followed the existing pattern deliberately, so the fix stays one
+> reviewable commit with one deploy test.
 
 
 ## Getting started
@@ -239,23 +310,54 @@ file per layer rather than editing shared ones.
 
 | Layer | Folder and files | Question | What breaks if it's missing |
 |---|---|---|---|
-| 1. Shaping | `tests/layer1_shaping/` — `test_profile_shaping.py`, `test_talent_shaping.py` | Does the transformation code do what we intended? | A parsing bug ships. Caught by every other test suite in the world; the ordinary one. |
-| 2. Schema contract | `tests/layer2_contract/` — `test_profile_contract.py`, `test_talent_contract.py` | Does the declared schema still describe what the code produces? | `PROFILE_COLUMNS` is a raw DDL **string**. `py_compile`, `ruff`, `pytest` and `databricks bundle validate` all pass green on a schema that cannot even parse — one unescaped apostrophe in a `COMMENT` does it. Only a live pipeline update would notice. |
-| 3. Data quality rules | `tests/layer3_rules/` — `test_rule_hygiene.py`, plus `test_profile_rules.py`, `test_talent_rules.py` | Are the quality rules themselves right? | Same problem, worse consequence. A `@dp.expect` predicate is a string too, so a rule naming a column that doesn't exist, or one that catches nothing, reports **100% pass forever** and nobody looks again. |
+| 1. Shaping | `tests/layer1_shaping/` — `test_profile_shaping.py`, `test_talent_shaping.py`, `test_user_shaping.py` | Does the transformation code do what we intended? | A parsing bug ships. Caught by every other test suite in the world; the ordinary one. |
+| 2. Schema contract | `tests/layer2_contract/` — `test_profile_contract.py`, `test_talent_contract.py`, `test_user_contract.py` | Does the declared schema still describe what the code produces? | The schema Lakeflow takes is a raw DDL **string**. `py_compile`, `ruff`, `pytest` and `databricks bundle validate` all pass green on one that cannot even parse. It is rendered from `schemas/<entity>.yml` now, so nobody hand-quotes it — but the columns still have to match what the shaping function emits, and only this layer checks that. |
+| 3. Data quality checks | `tests/layer3_rules/` — `test_rule_hygiene.py`, plus `test_profile_rules.py`, `test_talent_rules.py`, `test_user_rules.py`, `test_child_rules.py` | Are the quality checks themselves right? | Same problem, worse consequence. DQX resolves a check's columns at apply time and **skips** one it can't resolve rather than failing, so a check naming a column that doesn't exist either quarantines 100% of rows or reports **100% pass forever** — both while the pipeline reports a healthy run. |
 
 `tests/conftest.py` and `tests/helpers.py` stay at the root of `tests/`: they are shared by
 all three layers and belong to none of them.
 
 Layer 3 is split two ways rather than three, and the split is the point.
-`test_rule_hygiene.py` is *cross-cutting*: it iterates `ALL_RULE_SETS` and checks every
-rule in the project for parseability, snake_case naming, project-wide name uniqueness and
-drop-rule policy. Nobody edits it to add an entity — registering your rule sets is what
-makes it cover them. The per-entity `test_*_rules.py` files are the *behavioural* half:
-your rules pass clean fixtures and fire on the records built to break them. Only you can
-write that half.
+`test_rule_hygiene.py` is *cross-cutting*: it iterates `CHECKS` and checks every check in the
+project for well-formedness, snake_case naming, project-wide name uniqueness and
+error-criticality policy, plus the two-directional key check that every dataset in `checks/`
+is one a transformation applies and vice versa, and that each has a valid view and a
+quarantine table. Nobody edits it to add an entity. The `test_*_rules.py` files are the
+*behavioural* half: your checks pass clean fixtures and fire on the records built to break
+them. Only you can write that half.
 
-Layer 3 is the one people skip, and it's the reason `whoz_ingestion/expectations.py` exists —
-see "Data quality rules" below.
+**`assert_no_skipped_checks` is the single most important assertion in the suite**, and it
+exists because of the row in the table above. `DQEngine.validate_checks` catches an unknown
+function, a bad argument name and an invalid criticality without touching Spark — the
+`checks.py` loader runs it at import, so those fail a pipeline update and a pytest run
+identically. It does *not* catch a column that doesn't exist, because that needs a DataFrame.
+`helpers.assert_no_skipped_checks` explodes `_errors`/`_warnings`, looks for `skipped = true`
+and fails naming the check, the message and the columns actually available. Every behaviour
+test calls it. Without it, a typo'd column name is invisible in every direction.
+
+**It has one limit, and it is worth knowing because it looks like success.** DQX decides to
+skip at *analysis* time but reports it *per row*, so a result with no rows carries no
+`skipped` marker and there is nothing to find — a typo'd column in a check applied to an
+empty DataFrame used to pass clean. The helper now rejects an empty result outright rather
+than returning quietly, and `test_assert_no_skipped_checks_rejects_an_empty_result` pins
+that. Where a fixture legitimately yields no rows, the test says so explicitly — see
+`KNOWN_EMPTY` in `tests/layer3_rules/test_child_rules.py`. The second limit has no guard:
+under `ExtraParams(suppress_skipped=True)` DQX emits no marker at all and this assertion
+cannot see the skip by any route. It works *because* `conftest.py` leaves that flag off.
+
+Layer 3 is the one people skip, and it's the reason `whoz_ingestion/checks/` exists — see
+"Data quality checks" below.
+
+**Why checks and schemas are data, not literals.** Both only a running pipeline ever really
+reads, and both fail silently when wrong. A DDL string with one unescaped apostrophe inside a
+`COMMENT` ends the literal early and takes the whole schema down; a check naming a column that
+doesn't exist enforces nothing. Neither `py_compile` nor `ruff` nor `databricks bundle
+validate` looks inside either. Keeping both as YAML a plain-Python loader reads buys three
+things: the quoting is done once by code instead of being remembered at every column, the
+loader can *validate* at import (so a malformed check raises in a pipeline update and in
+pytest identically, rather than yielding a check set that enforces nothing), and — the actual
+point — a test can import the same files the pipeline does, with no Databricks workspace, and
+run every check against real DataFrame output.
 
 ### Fixtures
 
@@ -268,7 +370,7 @@ the contract:
 |---|---|---|
 | `typical.json` | ordinary, fully-populated records, realistic 24-hex ids | **pass** |
 | `hazards.json` | one record per documented type hazard — polymorphic fields, absent vs. null vs. all-null objects, every timestamp precision, near-empty records | **pass** — awkward is not invalid |
-| `violations.json` | records designed to trip the quality rules | **fire**, with exactly the expected counts |
+| `violations.json` | records designed to trip the quality checks | **fire**, with exactly the expected counts |
 
 Records in `hazards.json`/`violations.json` use descriptive ids (`hazard-absent-headline`,
 `violation-profile-as-array`) rather than realistic ObjectIds, so assertions read as the
@@ -301,67 +403,159 @@ datetimes using the **JVM default** zone, which the setting doesn't reach. Measu
 project: the same value reads `04:04:05` on a laptop in Europe/Madrid and `03:04:05` on
 GitHub's UTC runners, so the assertion passes locally and fails in CI.
 
-### Data quality rules
+### Data quality checks
 
-Every rule the pipeline enforces lives in `src/whoz_ingestion/expectations.py`
-as a `{name: SQL predicate}` dict, not as a decorator argument. Two things read those dicts:
-the pipeline, via `@dp.expect_all` / `@dp.expect_all_or_drop`, and the test suite. That
-indirection is the whole point — the module imports nothing, so a test can import it
-without a Spark session and evaluate every predicate against real DataFrame output.
+Every check the pipeline enforces lives in `src/whoz_ingestion/checks/<dataset>.yml`, one
+file per dataset, as a **native Databricks Labs [DQX](https://databrickslabs.github.io/dqx/)
+check list** — the exact format `DQEngine.validate_checks` and `apply_checks_by_metadata`
+accept, with no translation layer of our own:
 
-The suffix is a contract, not a label:
+```yaml
+- name: profile_id_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: profile_id
 
-* `*_MUST_HOLD` → `@dp.expect_all_or_drop`. Violating rows are **dropped**. Only for a row
-  that is unusable — in practice, a null primary key. `test_drop_rules_only_ever_guard_a_key`
-  enforces this, because dropping rows is invisible: the pipeline reports a healthy run and
+- name: completion_rate_is_fraction
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments: { column: completion_rate, min_limit: 0, max_limit: 1 }
+```
+
+`checks.py` is a loader over that folder; it exposes one dict, `CHECKS`, keyed by filename
+stem, and on import it runs `DQEngine.validate_checks` on every dataset, requires an explicit
+`name:` on every check and requires those names to be unique project-wide. The dataset key is
+the name of the `@dp.temporary_view` / `@dp.table` function the checks protect, and
+`test_rule_hygiene.py` checks that correspondence both ways — a key no dataset defines, or a
+dataset whose checks nobody applies, fails locally.
+
+Prefer a **built-in check function** to `sql_expression` wherever one fits: built-ins carry
+typed messages and tested edge handling, and `is_in_range` in particular is null-safe by
+construction, so the `x IS NULL OR …` wrapper these predicates used to need is gone. Reach for
+`sql_expression` only for things no built-in covers — two-column comparisons, parse checks —
+and give it a `msg:` that explains what it means that the check fired, because DQX has no
+typed message to fall back on there.
+
+**Criticality is a contract, not a label:**
+
+* `error` → the row is **withheld**: excluded from the silver table, written to the dataset's
+  quarantine table instead. Only for a row that is unusable — in practice, a null primary key.
+  `test_error_criticality_checks_only_ever_guard_a_key` enforces that by inspecting the check
+  *function*, because withholding rows is invisible: the pipeline reports a healthy run and
   the data is simply not there.
-* `*_SHOULD_HOLD` → `@dp.expect_all`. Violating rows are **kept and counted**. Everything
-  else: assumptions about the source that hold today and should raise an eyebrow, not delete
-  data, if they ever stop.
+* `warn` → the row is in **both**: it flows into silver as normal *and* is written to
+  quarantine carrying the `_warnings` struct that says why. Everything else: assumptions about
+  the source that hold today and should raise an eyebrow, not remove data, if they ever stop.
 
-**To add a rule:** add one line to the right dict, and one record to
-`fixtures/whoz_profiles/violations.json` that trips it. The hygiene tests pick the rule up
-automatically; `test_every_profile_rule_is_covered_by_the_violations_fixture` fails until the
-fixture record exists, so a rule can't be added without evidence that it works.
+### How a checked dataset is wired
 
-**On DQX.** Databricks Labs' [DQX](https://databrickslabs.github.io/dqx/) solves the same
-problem as this layer, with a quarantine-table pattern and a data-health dashboard on top.
-It's worth a look if quality reporting grows beyond what Lakeflow's built-in expectation
-metrics give you. It is not an alternative to layers 1 and 2 — DQX validates *data* at
-runtime, pytest validates *code* before merge. The rules-as-data shape here is deliberately
-close to DQX's own, so moving is additive rather than a rewrite.
+Every dataset with checks is three objects in `transformations/silver/`, the documented DQX
+pattern:
+
+```python
+dq = DQEngine(WorkspaceClient(), spark=spark)      # once per module
+
+@dp.temporary_view                                  # 1. apply the checks, once
+def whoz_profile_checked():
+    return dq.apply_checks_by_metadata(shape_profile(...), CHECKS["whoz_profile_shaped"])
+
+@dp.temporary_view                                  # 2. the rows that pass
+def whoz_profile_shaped():                          #    name unchanged -> AUTO CDC untouched
+    return dq.get_valid(spark.readStream.table("whoz_profile_checked"))
+
+@dp.table(name=..., table_properties={"quality": "quarantine"})   # 3. the rows that didn't
+def whoz_profiles_quarantine():
+    return dq.get_invalid(spark.readStream.table("whoz_profile_checked"))
+```
+
+`get_valid` returns the base columns **without** `_errors`/`_warnings`, which is why the AUTO
+CDC flows and the declared schemas did not change at all. `whoz_profile_skill_ratings` and
+`whoz_profile_completion_rules` have no checks and so have neither of the other two objects.
+
+**Querying quarantine.** A quarantine table is the base columns plus two arrays of result
+structs (`name`, `message`, `columns`, `function`, `run_time`, `skipped`, …). It is **not** a
+dead-letter queue — `warn` rows are in it *and* in silver.
+
+```sql
+-- what was actually withheld from silver
+SELECT * FROM silver.whoz_profiles_quarantine WHERE _errors IS NOT NULL;
+
+-- which checks are firing, and how often
+SELECT r.name, r.message, count(*) AS rows
+FROM silver.whoz_profiles_quarantine
+LATERAL VIEW explode(concat(coalesce(_errors, array()), coalesce(_warnings, array()))) AS r
+GROUP BY r.name, r.message ORDER BY rows DESC;
+
+-- the alarm: a check DQX could not resolve, so it checked nothing (or everything)
+SELECT * FROM silver.whoz_profiles_quarantine
+LATERAL VIEW explode(concat(coalesce(_errors, array()), coalesce(_warnings, array()))) AS r
+WHERE r.skipped;
+```
+
+**To add a check:** add one entry to the dataset's `checks/<dataset>.yml`, and one record to
+`fixtures/<entity>/violations.json` that trips it. The hygiene tests pick the check up
+automatically; `test_every_<entity>_rule_is_covered_by_the_violations_fixture` fails until the
+fixture record exists, so a check can't be added without evidence that it works.
+
+Table schemas work the same way and for the same reasons — `schemas/<entity>.yml` plus
+`contract.py`, which renders the columns into the DDL string `create_streaming_table` takes
+and does the apostrophe escaping once, in code.
+
+**On DQX — adopted at runtime, with two consequences worth knowing.** Databricks Labs'
+[DQX](https://databrickslabs.github.io/dqx/) now evaluates every quality check this pipeline
+enforces, at runtime, with a quarantine table per checked dataset. It replaced
+`@dp.expect_all` / `@dp.expect_all_or_drop` entirely; there are no expectation decorators left
+in `transformations/`. What that bought is the quarantine tables: a `warn` row used to be a
+number on a dashboard, and is now a row you can query, join and count by check name.
+
+Two things it cost, both accepted deliberately:
+
+* **The pipeline graph's Data Quality tab no longer populates for these datasets.** DQX's
+  Lakeflow integration does not use Expectations — it uses its own methods — and Databricks
+  documents that a query with no expectations defined has no data quality metrics. The
+  quarantine tables are now the only place a `warn` finding is visible. That is a richer place
+  than the tab was, but it is a place you have to go to rather than one that greets you.
+* **`databricks-labs-dqx` is a pipeline runtime dependency.** It is classified Beta on PyPI
+  and ships an explicit no-SLA / AS-IS disclaimer, with roughly one breaking change per minor
+  release, and it is now on the ingestion path of every silver table. `pyproject.toml` pins it
+  to a compatible-minor range for that reason. `pandas` is pinned alongside it because DQX
+  imports pandas at module scope without declaring it as a dependency — without that line,
+  `from databricks.labs.dqx.engine import DQEngine` raises `ModuleNotFoundError`.
+
+**And one failure mode the old decorators did not have.** DQX resolves a check's columns at
+apply time. When it cannot — a typo'd `column:`, an `sql_expression` naming something that
+isn't there — it does not raise. It marks the check `skipped=true` and emits that on every
+row: at `error` criticality the silver table empties into quarantine, and under
+`suppress_skipped` the check silently becomes a no-op. `@dp.expect_all` failed the update
+loudly instead. `helpers.assert_no_skipped_checks` is what closes that hole, and it is called
+by every behaviour test in `tests/layer3_rules/` — including the ones that assert checks *do*
+fire, since a skipped check is not a fired one. Mutating a column name in a `checks/*.yml`
+fails locally with the bad column named — how many tests depends on how many fixtures reach
+that dataset with rows, and for the child datasets it is one, not four. (Measured: a typo in
+`whoz_position_aptitude_refs.yml` fails only the `typical` case, because the `hazards` fixture
+produces no rows for it at all.) None of this is an alternative to layers 1 and 2 — DQX
+validates *data* at runtime, pytest validates *code* before merge.
 
 ### Adding a source entity
 
 The unit of extension is the **entity**, and the seam is `src/whoz_ingestion/`. Everything generic
 comes free: `tests/helpers.py` is entity-agnostic, and the hygiene tests in
-`tests/layer3_rules/test_rule_hygiene.py` iterate `ALL_RULE_SETS`, so registering your rules
-is enough to have every one of them checked for parseability, snake_case naming,
-project-wide name uniqueness and drop-rule policy. `whoz_talents` was added this way; copy
-it — literally, since the per-entity test files are one per layer and there is no shared
-test file to append to.
+`tests/layer3_rules/test_rule_hygiene.py` iterate `CHECKS`, so adding a
+`checks/<dataset>.yml` is enough to have every one of its checks validated by DQX and checked
+for snake_case naming, project-wide name uniqueness and error-criticality policy.
+`whoz_talents` was added this way; copy it — literally, since the per-entity test files are
+one per layer and there is no shared test file to append to.
 
-The seven headline steps are below. **`docs/adding_a_source_entity.md` is the full
-checklist** — what each file must contain, which test catches each mistake, and the two
-things nothing catches.
-
-1. **`fixtures/<entity>/{typical,hazards,violations}.json`** — real records, trimmed.
-2. **`conftest.py`** — one entry in `BRONZE_KEYS` (the identity columns and their JSON
-   paths), one in `SOURCE_FILES`, and two one-line fixtures at the bottom.
-3. **`whoz_ingestion/shaping/<entity>.py`** — `<ENTITY>_COLUMNS` (DDL), `<ENTITY>_HISTORY_COLUMNS`
-   if it gets an SCD2 table, and `shape_<entity>(bronze) -> DataFrame`. No `pyspark.pipelines`
-   import, ever — that's what keeps it testable.
-4. **`whoz_ingestion/expectations.py`** — `<ENTITY>_MUST_HOLD` / `<ENTITY>_SHOULD_HOLD`, both
-   registered in `ALL_RULE_SETS`. Rule names must be unique project-wide. The one shared
-   file you still edit, and deliberately so — see the doc for why.
-5. **`tests/layer1_shaping/test_<entity>_shaping.py`** — one test per hazard.
-6. **`tests/layer2_contract/test_<entity>_contract.py`** (three tests) and
-   **`tests/layer3_rules/test_<entity>_rules.py`** (three tests) — both **new files**,
-   copied from the talent pair. `test_rule_hygiene.py` you never touch.
-7. **`transformations/bronze/<entity>.py` + `silver/<entity>.py`** — thin wrappers, plus the
-   pipeline `configuration` entries for the source path and schema location. The bronze
-   file's `try_variant_get` key paths must match `BRONZE_KEYS`, or the tests build input by
-   a different route than production reads it.
+**[`docs/adding_a_source_entity.md`](docs/adding_a_source_entity.md) is the checklist** —
+thirteen numbered steps, what each file must contain, which test catches each mistake, and the
+two things nothing catches. Follow it there rather than from here: this section used to carry
+a seven-step summary of the same work, the two lists were renumbered independently, and a
+summary that disagrees with the checklist about how many steps there are is worse than no
+summary. Roughly: fixtures, then `conftest.py`, then the shaping and checks files, then one
+test per layer, then the thin transformation wrappers and the pipeline config.
 
 The talent entity is worth reading as the worked example, particularly
 `whoz_ingestion/shaping/talent.py`'s header: it documents *what it deliberately does not model*
@@ -371,43 +565,62 @@ months later.
 ### Why the transformations aren't tested directly
 
 `pyspark.pipelines` (imported as `dp` in every file under `transformations/`) is only fully
-present inside a running Lakeflow pipeline: the expectation decorators don't exist in
-open-source PySpark, and the module-level `spark.conf.get` calls fail with no pipeline
-configuration. So the row-shaping logic lives in `src/whoz_ingestion/`, which has no
-`pipelines` dependency at all and takes/returns plain DataFrames. Each `@dp.table` function
-is a thin wrapper: read the upstream table, call the `whoz_ingestion` function, return the
-result. Test the `whoz_ingestion` function; don't try to call the `@dp.table` one.
+present inside a running Lakeflow pipeline, and the module-level `spark.conf.get` calls fail
+with no pipeline configuration. Those files also construct a `DQEngine(WorkspaceClient())` at
+import, which needs workspace credentials. So the row-shaping logic lives in
+`src/whoz_ingestion/`, which has no `pipelines` dependency at all and takes/returns plain
+DataFrames. Each `@dp.table` function is a thin wrapper: read the upstream dataset, call the
+`whoz_ingestion` function or a DQX method, return the result. Test the `whoz_ingestion`
+function; don't try to call the `@dp.table` one.
 
-### What's covered today, and the next step
+### What's covered today, and what isn't
 
-Covered, at all three layers, resolved against real DataFrame output so a typo'd column name
-in a rule fails locally:
+Every check in the project is applied to real DataFrame output by the same `DQEngine` call the
+pipeline makes, so a typo'd column name fails locally rather than being silently skipped at
+pipeline update:
 
 * `shape_profile()` → `silver.whoz_profiles`, `silver.whoz_profile_history`
 * `shape_talent()` → `silver.whoz_talents`, `silver.whoz_talent_versions`
+* `shape_user()` → `silver.whoz_users`, `silver.whoz_user_versions`
+* the child datasets — `whoz_profile_aptitudes`, `whoz_profile_positions`,
+  `whoz_position_aptitude_refs`, `whoz_talent_workspace_history` — via their
+  `whoz_ingestion/shaping/<table>.py` modules, whose queries
+  `tests/layer3_rules/test_child_rules.py` runs against a bronze fixture. This was the last
+  blind spot: those ten checks, half of the project's total, used to be parsed but never
+  resolved.
 
-Not yet: the child tables (`whoz_profile_aptitudes`, `whoz_profile_positions`,
-`whoz_position_aptitude_refs`, `whoz_profile_skill_ratings`, `whoz_profile_completion_rules`,
-`whoz_talent_workspace_history`). Their `spark.sql(...)` bodies still sit inline in
-`transformations/silver/`, so their rules get hygiene checks only — a rule naming a column
-that doesn't exist on those tables would still slip through. Pulling those bodies into
-`whoz_ingestion/shaping/` the way `shaping/profile.py` and `shaping/talent.py` were done is the
-one change that closes it; the tests to add afterwards are already sketched in
-`tests/layer3_rules/test_rule_hygiene.py`'s header.
+`whoz_profile_skill_ratings` and `whoz_profile_completion_rules` have no checks, so there is
+nothing for layer 3 to check on them and neither has a quarantine table; their queries live in
+`shaping/` with the rest and can be checked the same way the day they get one.
+
+Still only partly covered is the **`violations.json` half for the child datasets**. The
+`user` entity closed it for `whoz_user_workspace_roles` — all three of its checks are made to
+fire by `fixtures/whoz_users/violations.json`, and
+`test_every_user_child_rule_is_covered_by_the_violations_fixture` keeps it that way. The four
+profile and talent child datasets still have no violating record, so ten checks are applied
+but never fired. `test_user_child_rules_catch_the_records_designed_to_break_them` is the shape
+the others should grow into.
+
+Separately, `hazard-extended-year-end-date` looks like it should
+trip `end_date_parsed` — that check was written for it — and does not: Spark 4.0 parses
+`+22015-07-31` as a valid `DATE` rather than returning NULL, contradicting
+`docs/whoz_profile_data_model.md` §2. `test_extended_year_end_date_parses_rather_than_nulling`
+pins that, so the day the behaviour changes (or Databricks Runtime turns out to differ) it
+is a visible failure and not a surprise.
+
+Also uncovered, and it can only be covered by deploying: **the pipeline wiring itself**. That
+the `_checked` views resolve, that `spark.readStream.table("<view>")` attaches to a temporary
+view in the pipeline graph, that `WorkspaceClient()` authenticates on serverless, and that the
+quarantine tables infer a usable schema — none of that runs in pytest, and `databricks bundle
+validate` does not reach it either. Count the datasets in the first update's graph.
 
 ## CI/CD
 
-Three environment branches — `dev`, `test`, `main` — drive two workflows. (`local` has
-no branch; it's never touched by CI, see Environments above.)
+Three environment branches — `dev`, `test`, `main` — drive two workflows. A **PR into**
+one of them runs pytest and validates the matching bundle target; a **push to** one of them
+deploys that target. (`local` has no branch; it's never touched by CI, see Environments
+above.)
 
-| Branch | Bundle target | PR into it (`.github/workflows/databricks-ci.yml`) | Push to it (`.github/workflows/databricks-cd.yml`) |
-|---|---|---|---|
-| `dev` | `dev` | validates the `dev` target + runs pytest | deploys `dev` |
-| `test` | `test` | validates the `test` target + runs pytest | deploys `test` |
-| `main` | `prod` | validates the `prod` target + runs pytest | deploys `prod`, gated by the `prod` GitHub Environment |
-
-`databricks bundle validate`/`deploy` need a live authenticated CLI session against the
-target workspace regardless of target, so both authenticate as the `sp-oxygen-cicd`
-service principal over OAuth M2M, via three repo secrets: `DATABRICKS_HOST`,
-`DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`. `unit-tests` needs none of these —
-see Testing above.
+Full detail — job breakdown, service principal setup, secret rotation, failure triage —
+is in [`.github/workflows/README.md`](../.github/workflows/README.md).
+Current configuration state and known gaps are in [`docs/cicd.md`](../docs/cicd.md).

@@ -1,0 +1,68 @@
+# whoz_profile_shaped -> silver.whoz_profiles / silver.whoz_profile_history
+#
+# Applied to the shaped view, so these run once and protect both AUTO CDC targets.
+#
+# A native Databricks Labs DQX check list: exactly what DQEngine.validate_checks and
+# apply_checks_by_metadata accept, and what FileChecksStorageConfig would load unmodified.
+# Loaded by ../checks.py, which validates it at import. See that module for the
+# error/warn contract and what quarantining actually costs.
+#
+# Every check carries an explicit `name:`. DQX would generate one otherwise, and the names
+# here are referenced by tests/layer3_rules/test_profile_rules.py's expected-count dict and
+# surface as metric labels — a generated name breaks both.
+
+# profile_id is the key both AUTO CDC flows merge on. A NULL one cannot be upserted, so this
+# is the one check in the profile path that is `error` (row quarantined) rather than `warn`.
+# schemas/whoz_profile.yml declares profile_id STRING NOT NULL on the strength of it.
+- name: profile_id_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: profile_id
+
+# Non-null on every record in the analysed export. Warn if that changes: a profile with no
+# talent is still ingestable, it just cannot be joined to anything.
+- name: talent_id_not_null
+  criticality: warn
+  check:
+    function: is_not_null
+    arguments:
+      column: talent_id
+
+# The source is unversioned in this extract (main=true everywhere), but the model allows
+# several versions per talent. If this starts firing, the grain of silver.whoz_profiles is
+# wrong — one row per profile_id stops meaning one row per talent, and the AUTO CDC keys
+# need revisiting.
+#
+# NULL HANDLING, and the `IS NOT NULL` half is not redundant. DQX flags a row when
+# NOT(<expression>) is TRUE, so a NULL expression result flags nothing. The predicate this
+# replaces was `is_main_version = true` under expect_all, which flags anything that is not
+# TRUE — NULL included, deliberately, because a profile that does not say whether it is the
+# main version is exactly the drift this watches for. Spelling the null case out keeps that
+# behaviour; writing the bare `is_main_version = true` here would silently drop it.
+- name: is_main_version
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: is_main_version IS NOT NULL AND is_main_version = true
+      msg: >-
+        this profile is not flagged as the main version, so silver.whoz_profiles may hold
+        more than one row per talent and the AUTO CDC keys need revisiting
+
+# completionRate is documented as a 0-1 fraction, not a 0-100 percentage (verified against
+# the live export: min 0.0, max 1.0). A value above 1 means Whoz changed the unit, which
+# would silently break any downstream metric built on it.
+#
+# is_in_range is null-safe by construction — it builds (col < min) | (col > max), so a NULL
+# is not flagged. That is why the "completion_rate IS NULL OR" prefix the hand-written
+# predicate carried is gone rather than translated: it would now be dead weight.
+- name: completion_rate_is_fraction
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments:
+      column: completion_rate
+      min_limit: 0
+      max_limit: 1

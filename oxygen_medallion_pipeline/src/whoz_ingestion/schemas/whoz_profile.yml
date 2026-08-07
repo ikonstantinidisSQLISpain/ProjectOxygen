@@ -1,0 +1,135 @@
+# The declared schema of silver.whoz_profiles and — with contract.SCD2_COLUMNS appended —
+# silver.whoz_profile_history.
+#
+# The one rule that matters: this list must match shape_profile()'s SELECT
+# (../shaping/profile.py) column for column, type for type, and IN ORDER. AUTO CDC matches
+# source to target positionally as well as by name, so two same-typed columns swapping
+# places is a real defect. tests/layer2_contract/test_profile_contract.py asserts exactly
+# that, against the DDL contract.ddl() renders from this file.
+#
+# Comments are prose, written once, quoted by YAML — no doubled apostrophes. Distributions
+# named here ("false on every record today") describe the export analysed on 2026-07-31,
+# not a guarantee; see docs/whoz_profile_data_model.md.
+columns:
+  # ---- identity ----
+  - name: profile_id
+    type: STRING NOT NULL
+    comment: Whoz profile ID, stable primary key. NOT NULL is enforced upstream by profile_id_not_null, a criticality:error DQX check, so a null-key row is withheld and quarantined
+  - name: talent_id
+    type: STRING
+    comment: One profile per talent today; the model allows several versions per talent
+  - name: federation_id
+    type: STRING
+    comment: Tenant identifier; a single value across this whole export (single-tenant)
+  - name: version_name
+    type: STRING
+    comment: '"Main version" on every record today'
+  - name: is_main_version
+    type: BOOLEAN
+    comment: true on every record today; is_main_version DQX check upstream warns if that ever changes
+
+  # ---- classification ----
+  - name: status
+    type: STRING
+    comment: DRAFT | VALIDATED | SUBMITTED
+  - name: content_language
+    type: STRING
+    comment: en / fr / nl / it / de / es, per docs/whoz_profile_data_model.md
+  - name: permission_scope
+    type: STRING
+    comment: SECRET on every record today
+  - name: travel_range
+    type: STRING
+    comment: DEFAULT on every record today
+  - name: is_removed
+    type: BOOLEAN
+    comment: false on every record today
+  - name: resume_relation_status
+    type: STRING
+    comment: "Includes a typo in the source enum: RESUME_IMPORT_SUGGESTION_SUBMITED"
+
+  # ---- completeness scoring ----
+  - name: completion_rate
+    type: DOUBLE
+    comment: >-
+      Profile completeness score, 0-1 (i.e. 0.42 = 42% complete). Computed by Whoz, not by
+      us, from the weights assigned to the completion rules — see
+      silver.whoz_profile_completion_rules. Source sends int on some records and float on
+      others; always read as double
+  - name: completion_rate_computed_at
+    type: TIMESTAMP
+    comment: When completion_rate was last computed
+
+  # ---- headline (1:1 embedded object; absent on ~25% of records) ----
+  - name: headline_job_title
+    type: STRING
+    comment: From the embedded headline object, absent on roughly a quarter of profiles
+  - name: seeking_opportunities
+    type: BOOLEAN
+    comment: Non-null on very few profiles today
+  - name: seeking_opportunities_updated_at
+    type: TIMESTAMP
+  - name: headline_permission_scope
+    type: STRING
+    comment: SECRET on every record today
+  # The five below are null on 100% of records today. Kept so the column exists the day
+  # Whoz starts populating them — costs nothing in Delta.
+  - name: headline_aim
+    type: STRING
+    comment: Null on every record today; kept so the column exists once Whoz starts populating it
+  - name: national_mobility
+    type: STRING
+    comment: Null on every record today; kept so the column exists once Whoz starts populating it
+  - name: international_mobility
+    type: STRING
+    comment: Null on every record today; kept so the column exists once Whoz starts populating it
+  - name: mobility_date_raw
+    type: STRING
+    comment: Null on every record today; kept so the column exists once Whoz starts populating it
+  - name: mobility_note
+    type: STRING
+    comment: Null on every record today; kept so the column exists once Whoz starts populating it
+
+  # ---- free text ----
+  - name: hobbies
+    type: STRING
+    comment: Free text
+
+  # ---- audit fields from the source system ----
+  - name: source_created_at
+    type: TIMESTAMP
+    comment: When Whoz created this profile record
+  - name: source_created_by
+    type: STRING
+    comment: Whoz user ObjectId
+  - name: source_last_modified_at
+    type: TIMESTAMP
+    comment: Whoz's own last-modified time on the record — what AUTO CDC sequences by, not our ingest time
+  - name: source_last_modified_by
+    type: STRING
+  - name: source_last_explicit_update_at
+    type: TIMESTAMP
+  - name: source_last_explicit_update_by
+    type: STRING
+
+  # ---- collection sizes: cheap, and they make quality drift obvious ----
+  - name: aptitude_count
+    type: INT
+    comment: size(aptitudes[]) at the source; exploded rows live in silver.whoz_profile_aptitudes
+  - name: position_count
+    type: INT
+    comment: size(positions[]) at the source; exploded rows live in silver.whoz_profile_positions
+  - name: skill_rating_count
+    type: INT
+    comment: size(skillRatings[]) at the source; legacy, mostly zero, see silver.whoz_profile_skill_ratings
+  - name: qualification_count
+    type: INT
+    comment: size(qualificationIds[]) at the source; too thin (423 values total) to model as its own table
+
+  # ---- lineage ----
+  - name: source_file
+    type: STRING
+    comment: "Bronze lineage: which landed file this profile version came from"
+  - name: ingested_at
+    type: TIMESTAMP
+    comment: "Bronze lineage: when this snapshot was ingested, not when Whoz generated it"

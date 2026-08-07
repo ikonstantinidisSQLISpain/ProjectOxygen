@@ -27,6 +27,9 @@ for a stored fixture file, or
 for a case small and pointed enough that inlining is clearer than a file. Prefer the file
 when the records describe the *source* ("this is what Whoz sends"), and inline when they
 describe the *test* ("this row has one field set, to isolate one behaviour").
+
+Layer 3 also needs `dq_engine`, a DQEngine over this same local session — see its docstring
+for why a mocked workspace client is enough and where that stops being true.
 """
 
 import json
@@ -35,8 +38,11 @@ import pathlib
 import sys
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
+from databricks.labs.dqx.engine import DQEngine
+from databricks.sdk import WorkspaceClient
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
@@ -62,6 +68,7 @@ INGESTED_AT = "2026-07-30 12:00:00"
 SOURCE_FILES = {
     "whoz_profiles": "dbfs:/Volumes/test/landing/source/2026-07-30_whoz__profile_report_anonymized.json",
     "whoz_talents": "dbfs:/Volumes/test/landing/source/2026-07-30_whoz__talent_report_anonymized.json",
+    "whoz_users": "dbfs:/Volumes/test/landing/source/2026-07-30_whoz__user_report_anonymized.json",
 }
 
 # The identity columns each bronze table pulls out of its raw payload, as
@@ -80,6 +87,15 @@ BRONZE_KEYS: dict[str, dict[str, str]] = {
         "federation_id": "$.federationId",
         "user_id": "$.userId",
         "workspace_id": "$.workspaceId",
+    },
+    # No federation_id or workspace_id here, and that is not an omission: on the user export
+    # both live *inside* the polymorphic federationRoles/workspaceRoles maps rather than as
+    # top-level scalars, so there is no path for try_variant_get to lift. federation_id is
+    # flattened onto the shaped row instead, and workspace membership is a child table.
+    # See docs/whoz_user_data_model.md §3.
+    "whoz_users": {
+        "user_id": "$.id",
+        "idp_id": "$.idpId",
     },
 }
 
@@ -110,6 +126,28 @@ def spark() -> SparkSession:
     yield session
     if not os.environ.get("SPARK_REMOTE"):
         session.stop()
+
+
+@pytest.fixture(scope="session")
+def dq_engine(spark: SparkSession) -> DQEngine:
+    """A DQEngine wired to the local Spark session, with a mocked workspace client.
+
+    DQEngine's first parameter is a required WorkspaceClient, and constructing a real one
+    needs Databricks credentials — which the rest of this suite deliberately does not have
+    (see the module docstring). DQX's own documentation prescribes exactly this
+    MagicMock(spec=WorkspaceClient) for local testing, while calling the approach
+    experimental. Taken at face value and measured: `apply_checks_by_metadata`,
+    `apply_checks_by_metadata_and_split`, `get_valid` and `get_invalid` all run against a
+    local session with no network access at all, because the check evaluation is pure Spark
+    and the client is only consulted by the parts of DQX this suite never touches — loading
+    checks from a workspace path, a volume or a Delta table, and the installation config.
+
+    So: use this fixture for applying checks. Do NOT reach for it to exercise
+    load_checks/save_checks or anything installation-shaped; that is where the mock stops
+    being a stand-in and starts being a fiction. DQEngine.validate_checks needs no engine at
+    all — it is a genuine staticmethod — so call it directly rather than through this.
+    """
+    return DQEngine(MagicMock(spec=WorkspaceClient), spark=spark)
 
 
 @pytest.fixture()
@@ -199,6 +237,29 @@ def bronze_of(spark: SparkSession) -> Callable[[list[dict[str, Any]], str], Data
     return _build
 
 
+@pytest.fixture()
+def child_query(spark: SparkSession) -> Callable[[Callable[[str], str], DataFrame], DataFrame]:
+    """Run one of the whoz_ingestion.shaping child queries over a bronze-shaped DataFrame.
+
+        result = child_query(aptitudes_sql, profile_fixture("typical"))
+
+    The query functions take the source relation as an argument, so the pipeline passes
+    STREAM(<bronze table>) and this passes a temp view over a fixture. Everything else about
+    the SQL is the same text in both — which is the point: this is what lets a test resolve
+    the child datasets' quality rules against the real columns those queries produce, rather
+    than merely parsing their predicates.
+    """
+
+    def _run(sql_for: Callable[[str], str], bronze: DataFrame) -> DataFrame:
+        # A temp view rather than spark.sql(..., bronze=bronze): binding a DataFrame by
+        # keyword fails inside a real pipeline, so the transformations use a relation name
+        # and so does this.
+        bronze.createOrReplaceTempView("bronze_under_test")
+        return spark.sql(sql_for("bronze_under_test"))
+
+    return _run
+
+
 # -------------------------------------------------------------------------------------
 # Per-entity conveniences. Two lines each; this is the whole cost of adding an entity.
 # -------------------------------------------------------------------------------------
@@ -224,3 +285,15 @@ def talent_bronze(bronze_of) -> Callable[[list[dict[str, Any]]], DataFrame]:
 def talent_fixture(source_records, talent_bronze) -> Callable[[str], DataFrame]:
     """fixtures/whoz_talents/<name>.json -> a bronze.whoz_talents-shaped DataFrame."""
     return lambda name: talent_bronze(source_records("whoz_talents", name))
+
+
+@pytest.fixture()
+def user_bronze(bronze_of) -> Callable[[list[dict[str, Any]]], DataFrame]:
+    """User dicts -> a bronze.whoz_users-shaped DataFrame."""
+    return lambda records: bronze_of(records, "whoz_users")
+
+
+@pytest.fixture()
+def user_fixture(source_records, user_bronze) -> Callable[[str], DataFrame]:
+    """fixtures/whoz_users/<name>.json -> a bronze.whoz_users-shaped DataFrame."""
+    return lambda name: user_bronze(source_records("whoz_users", name))

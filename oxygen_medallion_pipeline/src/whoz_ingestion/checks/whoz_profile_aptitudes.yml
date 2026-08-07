@@ -1,0 +1,39 @@
+# silver.whoz_profile_aptitudes — the skills inventory, one row per declared aptitude.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+
+- name: aptitude_id_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: aptitude_id
+
+# proficiency is a 0-5 scale. is_in_range is null-safe by construction — it builds
+# (col < min) | (col > max), so a NULL is not flagged — which is why the hand-written
+# "proficiency IS NULL OR" prefix is gone rather than translated. Most aptitudes carry no
+# proficiency at all, so that prefix was doing real work before and is now the built-in's job.
+- name: proficiency_in_range
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments:
+      column: proficiency
+      min_limit: 0
+      max_limit: 5
+
+# Each aptitude object repeats its parent's profileId. Disagreement between that and the row
+# we exploded it out of would mean the payload is internally inconsistent.
+#
+# The `profile_id IS NOT NULL` guard is there for the same reason as embedded_talent_id_agrees
+# in whoz_talent_shaped.yml: `embedded_profile_id = profile_id` is NULL when profile_id is
+# NULL, and DQX does not flag a NULL expression, whereas expect_all flagged anything not TRUE.
+# Spelling it out keeps the row counts identical to the predicate this replaces.
+- name: embedded_profile_id_agrees
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: embedded_profile_id IS NULL OR (profile_id IS NOT NULL AND embedded_profile_id = profile_id)
+      msg: >-
+        this aptitude names a different profile than the row it was exploded out of, so the
+        payload is internally inconsistent

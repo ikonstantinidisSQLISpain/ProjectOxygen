@@ -1,0 +1,104 @@
+# whoz_user_shaped -> silver.whoz_users / silver.whoz_user_versions
+#
+# Applied to the shaped view, so these run once and protect both AUTO CDC targets.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+# Every threshold here is measured — see docs/whoz_user_data_model.md.
+
+# user_id is the key both AUTO CDC flows merge on. A NULL one cannot be upserted, so this is
+# the one check in the user path that is `error` (row withheld and quarantined) rather than
+# `warn`. schemas/whoz_user.yml declares user_id STRING NOT NULL on the strength of it.
+#
+# THIS FIRES ON REAL DATA, EXACTLY ONCE. The export carries a single record with id: null and
+# every other field null too — an empty row, not a partial one. Expect one row in
+# silver.whoz_users_quarantine with _errors IS NOT NULL after every full refresh; that is
+# correct behaviour, not something to chase.
+- name: user_id_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: user_id
+
+# Both AUTO CDC flows sequence by this column. A NULL one has no position in the ordering, so
+# a late-landing export could overwrite newer data for that user. Non-null on every real
+# record today; warn rather than error because the row is still perfectly usable, it just
+# cannot be ordered.
+- name: last_modified_at_not_null
+  criticality: warn
+  check:
+    function: is_not_null
+    arguments:
+      column: source_last_modified_at
+
+# THE TRIPWIRE ON THE FEDERATION FLATTENING. federationRoles is a map, and silver.whoz_users
+# lifts one entry out of it into federation_id/federation_role rather than building a child
+# table — legitimate only because every populated record has exactly one entry (2,863 of
+# 2,863 measured) and the whole export references a single federationId.
+#
+# If this ever fires, the flattening is wrong: federation_id/federation_role are showing an
+# arbitrary one of several, and federation membership needs its own child table the way
+# workspace membership already has one. docs/whoz_user_data_model.md §3 records the reversal.
+#
+# is_in_range is null-safe by construction — it builds (col < min) | (col > max) — so the
+# sparse records, where the key is absent and the count is NULL, pass without a guard.
+- name: federation_count_at_most_one
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments:
+      column: federation_count
+      min_limit: 0
+      max_limit: 1
+
+# The unmodelled-collection watch. agenticStudioRoles is present on every record and empty on
+# every record, so it is carried as a count and nothing else. This fires the first time Whoz
+# starts populating it, which is the moment to decide whether it deserves a table.
+#
+# Null-safe for the same reason as above: absent key -> NULL count -> not flagged.
+- name: agentic_studio_roles_still_empty
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments:
+      column: agentic_studio_role_count
+      min_limit: 0
+      max_limit: 0
+
+# `removed` is false on all 4,036 records. If Whoz starts soft-deleting accounts, the grain of
+# silver.whoz_users quietly changes — "one row per user" starts including users nobody should
+# count — and every headcount built on it is wrong without anyone noticing.
+#
+# NULL HANDLING, and the `IS NOT NULL` half is not redundant: DQX flags a row when
+# NOT(<expression>) is TRUE, so a NULL expression flags nothing. A record that does not say
+# whether it is removed is exactly the drift this watches for, so the null case is spelled out
+# rather than left to pass. Same reasoning as is_main_version in whoz_profile_shaped.yml.
+- name: user_not_removed
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: is_removed IS NOT NULL AND is_removed = false
+      msg: >-
+        this account is flagged removed at the source, so silver.whoz_users no longer means
+        "one row per active account" and any headcount built on it is counting deleted users
+
+# A sign-in before the account existed means the two timestamps are not what we think they
+# are — most likely a time zone or precision bug at the source. Named with a `user_` prefix
+# because whoz_talent_shaped.yml already uses last_connection_not_before_created for the same
+# idea on talents, and check names must be unique project-wide (checks.py enforces it at
+# import) because they surface as metric labels, where two identically-named checks on
+# different tables read as one.
+#
+# Already null-safe as written: both IS NULL disjuncts are TRUE-or-FALSE, never NULL, and a
+# comparison of two non-null timestamps is never NULL either.
+- name: user_last_connection_not_before_created
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: >-
+        last_connection_at IS NULL OR source_created_at IS NULL
+        OR last_connection_at >= source_created_at
+      msg: >-
+        this account last signed in before it was created, so one of the two timestamps does
+        not mean what the pipeline assumes — suspect a time zone or precision bug at the source
