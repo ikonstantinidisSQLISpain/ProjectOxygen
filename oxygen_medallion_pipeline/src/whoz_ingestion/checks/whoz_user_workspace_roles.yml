@@ -1,0 +1,65 @@
+# silver.whoz_user_workspace_roles — which workspaces a user belongs to, and as what.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+#
+# Grain is (user_id, workspace_id, role); there is no natural id on the membership.
+
+# Both halves of the key have to be present for the row to mean anything: a membership
+# missing either end joins to nothing and cannot be deduplicated against anything.
+# Quarantined rather than warned for that reason.
+#
+# ON for_each_column AND CHECK NAMES: DQX expands this into one check per column but keeps the
+# explicit `name:` verbatim on each, so both expansions report as
+# `workspace_role_keys_not_null` and the one name still identifies the check in a metric label
+# and in the test suite's expected-count dicts. Which half was null lands in the result
+# struct's `message` and `columns` fields — see the longer note in
+# whoz_talent_workspace_history.yml.
+#
+# In practice only user_id can be null here: workspace_id comes from the map KEY, and a JSON
+# object key is never null. The column is included anyway, because that is a property of the
+# current query rather than of the data, and a future rewrite should not silently lose the
+# guard.
+- name: workspace_role_keys_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    for_each_column: [user_id, workspace_id]
+
+# The five roles observed across all 15,258 memberships: COLLABORATOR 14,751, ADMIN 342,
+# STANDARD 96, ADVANCED 61, RESTRICTED 8. A sixth is not an error — Whoz is entitled to add
+# one — but it is something to find out about deliberately rather than by noticing a
+# downstream permission report has a gap.
+#
+# is_in_list is null-safe by construction: it builds ~col.isin(...), and a NULL there is NULL
+# rather than TRUE, which DQX does not flag. No guard needed.
+- name: workspace_role_is_known
+  criticality: warn
+  check:
+    function: is_in_list
+    arguments:
+      column: role
+      allowed:
+        - ADMIN
+        - COLLABORATOR
+        - ADVANCED
+        - RESTRICTED
+        - STANDARD
+
+# Each membership repeats its own workspace id inside the entry, alongside being keyed by it.
+# The two agree on all 15,258 entries measured. Disagreement would mean the payload is
+# internally inconsistent and the workspace_id join cannot be trusted.
+#
+# The `workspace_id IS NOT NULL` guard is there for the same reason as
+# embedded_talent_id_agrees in whoz_talent_shaped.yml: `embedded_workspace_id = workspace_id`
+# is NULL when workspace_id is NULL, and DQX does not flag a NULL expression. Spelling it out
+# keeps the row counts identical to the predicate a reader would expect.
+- name: embedded_workspace_id_agrees
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: >-
+        embedded_workspace_id IS NULL
+        OR (workspace_id IS NOT NULL AND embedded_workspace_id = workspace_id)
+      msg: >-
+        this membership names a different workspace inside the entry than the map key it was
+        exploded out of, so the payload is internally inconsistent

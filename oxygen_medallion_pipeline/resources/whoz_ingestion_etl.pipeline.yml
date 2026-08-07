@@ -20,9 +20,27 @@ resources:
       # nothing else under src/ is executed just for being on the path.
       root_path: "../src"
 
+      # ONE GLOB PER LAYER, not a single `transformations/**`, and the difference is not
+      # cosmetic — it is a fix for a real update failure.
+      #
+      # `bundle deploy` only removes remote files it has a local sync snapshot for. Files
+      # uploaded by an older deploy lineage are orphaned in the workspace rather than deleted,
+      # and `transformations/**` matched those orphans as happily as the real ones. After the
+      # move to bronze/ + silver/ subfolders, a personal deploy still carried the pre-reorg
+      # flat modules (transformations/silver_whoz_talent.py and friends, importing the deleted
+      # `utilities` package), and the pipeline update failed with ModuleNotFoundError from a
+      # file that had not existed in git for weeks.
+      #
+      # Anchoring each glob at the layer folder means a stale sibling *outside* bronze/ or
+      # silver/ cannot be picked up at all, in any target, regardless of what is left over in
+      # the workspace. A future gold/ layer needs a third entry here — that is the cost, and
+      # it is worth paying for a failure mode whose error message names the wrong decade of
+      # the codebase.
       libraries:
         - glob:
-            include: ../src/whoz_ingestion_etl/transformations/**
+            include: ../src/whoz_ingestion_etl/transformations/bronze/**
+        - glob:
+            include: ../src/whoz_ingestion_etl/transformations/silver/**
 
       # Read by the transformation files through spark.conf.get, so these can change
       # without touching the Python source. Every table's name is schema-qualified
@@ -41,13 +59,24 @@ resources:
         # see each other's files. Its own schemaLocation — two streams must never share a
         # checkpoint directory.
         #
-        # KNOWN OPEN BUG, all four paths above and below: the volume is hardcoded to
-        # oxygen_dev instead of being ${var.catalog}-qualified, so a test or prod deploy
-        # reads *dev's* landing volume. Only dev has been run against real files, which is
-        # why it hasn't bitten yet. Fix all four together — a half-fix is worse, since the
-        # two entities would then disagree about which environment they are in.
+        # KNOWN OPEN BUG, every path in this block: the volume is hardcoded to oxygen_dev
+        # instead of being ${var.catalog}-qualified, so a test or prod deploy reads *dev's*
+        # landing volume. Only dev has been run against real files, which is why it hasn't
+        # bitten yet. Fix them ALL together — a half-fix is worse, since the entities would
+        # then disagree about which environment they are in.
+        #
+        # This was four paths when the pipeline had two entities and is six now that user is
+        # modelled. The new entity follows the existing (wrong) pattern deliberately, so the
+        # fix stays one reviewable commit with one deploy test, rather than being smeared
+        # across the change that added it.
         whoz.talents.source_path: /Volumes/oxygen_dev/landing/source/
         whoz.talents.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_talents_schema
+        # User export — the login accounts behind the talents. Same shared landing volume,
+        # its own filename glob (see FILE_NAME_GLOB in transformations/bronze/whoz_users.py)
+        # and its OWN schemaLocation: two Auto Loader streams must never share a checkpoint
+        # directory.
+        whoz.users.source_path: /Volumes/oxygen_dev/landing/source/
+        whoz.users.schema_path: /Volumes/oxygen_dev/landing/source/_checkpoints/whoz_users_schema
         whoz.catalog: ${var.catalog}
         whoz.bronze_schema: ${var.bronze_schema}
         whoz.silver_schema: ${var.silver_schema}

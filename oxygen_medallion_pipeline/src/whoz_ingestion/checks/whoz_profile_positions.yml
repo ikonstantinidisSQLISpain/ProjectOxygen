@@ -1,0 +1,52 @@
+# silver.whoz_profile_positions — jobs and missions in one array, self-hierarchical.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+
+- name: position_id_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: position_id
+
+# Catches the "+22015-07-31" extended-year value documented in
+# docs/whoz_profile_data_model.md: end_date comes back NULL from the cast while end_date_raw
+# still holds the string. Warn, don't quarantine — the rest of the row is fine.
+#
+# Worth knowing before you trust this check: it does not currently fire on that record.
+# Spark 4.0 parses +22015-07-31 as a valid DATE rather than returning NULL, so end_date is
+# non-NULL and this stays quiet. tests/layer3_rules/test_child_rules.py's
+# test_extended_year_end_date_parses_rather_than_nulling pins that measurement, so the day the
+# behaviour changes — or Databricks Runtime turns out to differ — it is a visible failure and
+# not a surprise.
+- name: end_date_parsed
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: end_date_raw IS NULL OR end_date IS NOT NULL
+      msg: >-
+        the source sent an endDate the DATE cast could not parse, so end_date is NULL while
+        end_date_raw still holds the original string
+
+- name: start_date_parsed
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: start_date_raw IS NULL OR start_date IS NOT NULL
+      msg: >-
+        the source sent a startDate the DATE cast could not parse, so start_date is NULL while
+        start_date_raw still holds the original string
+
+# Null-safe as written: both IS NULL disjuncts are TRUE-or-FALSE and a comparison of two
+# non-null dates is never NULL, so DQX's flag-on-NOT-TRUE and the old flag-on-not-TRUE agree
+# exactly. Nothing to add here.
+- name: dates_ordered
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: start_date IS NULL OR end_date IS NULL OR end_date >= start_date
+      msg: >-
+        this position ends before it starts, so one of the two dates is wrong and any tenure
+        or overlap metric built on the pair will be too

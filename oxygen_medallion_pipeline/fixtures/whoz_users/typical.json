@@ -1,0 +1,93 @@
+[
+  {
+    "id": "668c03f4080dd2051b3647b4",
+    "idpId": "3e1f554b-e64e-45b0-9c70-4ee12e17cb62",
+    "enabled": true,
+    "username": "drpcjmr6@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      "674d911998271817b43b0f2e": {
+        "workspaceId": "674d911998271817b43b0f2e",
+        "workspaceExternalId": null,
+        "roles": [
+          "ADMIN"
+        ]
+      }
+    },
+    "federationRoles": {
+      "668be62550f9cf5d75f87e61": {
+        "federationId": "668be62550f9cf5d75f87e61",
+        "roles": [
+          "ADMIN"
+        ]
+      }
+    },
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2024-07-08T15:21:24.511Z",
+    "lastConnectionDate": "2026-04-02T00:50:51.972Z",
+    "lastModifiedBy": "668c03f4080dd2051b3647b4",
+    "lastModifiedDate": "2026-04-02T00:50:51.972Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "6a2f7c1e4b8d9f0a3c5e6b71",
+    "idpId": "9c4a1d77-2e5b-4f83-b0a6-71cd3e8f4a92",
+    "enabled": true,
+    "username": "k4m2xq7p@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "COLLABORATOR"
+        ]
+      }
+    },
+    "federationRoles": {
+      "668be62550f9cf5d75f87e61": {
+        "federationId": "668be62550f9cf5d75f87e61",
+        "roles": [
+          "MEMBER"
+        ]
+      }
+    },
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-02-11T09:03:17.204Z",
+    "lastConnectionDate": "2026-06-30T14:22:08.615Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-06-30T14:22:08.615Z",
+    "removed": false,
+    "language": "fr-FR",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "6b3e8d2f5c9a0b1d4e7f8a62",
+    "idpId": "5d8b2e91-7a3c-406f-9b12-8e4f7a1c3d05",
+    "enabled": false,
+    "username": "z9h5tn2w@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-09-04T11:45:00.330Z",
+    "lastConnectionDate": "2025-11-19T08:12:44.907Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2025-12-01T16:30:22.118Z",
+    "removed": false,
+    "language": "en-US",
+    "theme": "LIGHT"
+  }
+]

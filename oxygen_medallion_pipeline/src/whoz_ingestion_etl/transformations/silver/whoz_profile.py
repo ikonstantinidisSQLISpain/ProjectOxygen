@@ -1,8 +1,13 @@
 # =====================================================================================
 # SILVER — silver.whoz_profiles / silver.whoz_profile_history
 #
-# Profile-level (1 row per profile) flattening of the bronze VARIANT payload.
-# Child collections are handled in silver/whoz_profile_children.py.
+# Profile-level (1 row per profile) flattening of the bronze VARIANT payload. This file
+# holds ONLY the profile grain; each collection exploded out of the payload is its own
+# file in this folder, named for the table it produces:
+#
+#   whoz_profile_aptitudes.py        whoz_profile_positions.py
+#   whoz_position_aptitude_refs.py   whoz_profile_skill_ratings.py
+#   whoz_profile_completion_rules.py
 #
 # Every extraction uses try_variant_get so that a bad value nulls one column instead
 # of failing the update. Collections stay as VARIANT here — they are unnested in the
@@ -17,7 +22,8 @@ from pyspark.sql import functions as F
 # resources/whoz_ingestion_etl.pipeline.yml), so src/ itself is on sys.path at runtime and
 # `whoz_ingestion.x` resolves. tests/ import by this same path (see pyproject.toml's
 # pythonpath) so a wrong prefix here fails the test suite too, not only at deploy time.
-from whoz_ingestion.expectations import PROFILE_MUST_HOLD, PROFILE_SHOULD_HOLD
+from whoz_ingestion.checks import CHECKS
+from whoz_ingestion.dq import engine
 from whoz_ingestion.shaping.profile import PROFILE_COLUMNS, PROFILE_HISTORY_COLUMNS, shape_profile
 
 CATALOG = spark.conf.get("whoz.catalog")
@@ -25,23 +31,90 @@ BRONZE_SCHEMA = spark.conf.get("whoz.bronze_schema")
 SILVER_SCHEMA = spark.conf.get("whoz.silver_schema")
 BRONZE_TABLE = f"{CATALOG}.{BRONZE_SCHEMA}.whoz_profiles"
 
+# ONE engine for the whole pipeline, not one per module, and lazily built. Constructing a
+# DQEngine is a live workspace call that can fail the update — it verifies connectivity twice
+# per construction, unconditionally — so a shared instance is what keeps this silver layer at
+# 2 control-plane round trips rather than one pair per file. The full reasoning, including why
+# it must stay lazy for pytest to collect at all and why no ExtraParams pinning is needed,
+# lives once in whoz_ingestion/dq.py.
+dq = engine(spark)
+
 
 # -------------------------------------------------------------------------------------
-# Shaped, validated rows off bronze — pipeline-scoped, materializes nothing itself.
+# Checked rows off bronze — shaped, then annotated by DQX with _errors and _warnings.
+# Pipeline-scoped; it exists so the check list is written down in one place and both the
+# valid view and the quarantine table below are defined against the same expression.
+#
+# IT DOES NOT MEAN THE CHECKS RUN ONCE, which is what this comment used to say. A pipeline
+# view is not materialized: Databricks recomputes it per consumer. This one has three —
+# the quarantine table, and both AUTO CDC flows via whoz_profile_shaped — so bronze is
+# streamed three times and shape_profile() plus all four checks are evaluated three times,
+# each flow carrying its own checkpoint.
+#
+# The consequence worth knowing is not the cost, it is that silver and quarantine advance
+# on SEPARATE checkpoints. "A warn row is in both" is therefore eventually true, not
+# atomically true, and a full refresh of one and not the other desynchronizes them until
+# both are refreshed together.
+#
+# The check list is data in whoz_ingestion/checks/whoz_profile_shaped.yml — a native DQX
+# check list, keyed here by that file's name. tests/layer3_rules/test_profile_rules.py
+# applies the very same list to real shape_profile() output without a pipeline, which is
+# what makes a check naming a column that does not exist fail in pytest rather than being
+# silently skipped here (DQX marks an unresolvable check `skipped=true` and carries on —
+# see whoz_ingestion/checks.py and helpers.assert_no_skipped_checks).
+# test_rule_hygiene.py checks the key below both ways: that it exists in CHECKS, and that
+# every dataset in CHECKS is one an apply_checks_by_metadata call here actually applies.
+# -------------------------------------------------------------------------------------
+@dp.temporary_view
+def whoz_profile_checked():
+    return dq.apply_checks_by_metadata(
+        shape_profile(spark.readStream.table(BRONZE_TABLE)), CHECKS["whoz_profile_shaped"]
+    )
+
+
+# -------------------------------------------------------------------------------------
+# The rows that pass — pipeline-scoped, materializes nothing itself.
 # Whoz re-lands a full snapshot under each dated export (see bronze/whoz_profiles.py),
 # so the same profile_id shows up once per snapshot here. Both AUTO CDC flows below
 # read this same view and turn that into an upsert, keyed by profile_id. A temporary
-# view is never a catalog object, so it keeps its bare name — nothing to qualify.
+# view is never a catalog object, so it keeps its bare name — nothing to qualify, and an
+# unqualified name is how Lakeflow resolves one pipeline dataset from another.
+#
+# The name is unchanged from before DQX, deliberately: create_auto_cdc_flow(source=...)
+# below still names this view, and get_valid() returns the base columns WITHOUT _errors
+# and _warnings, so the schema both flows merge into is byte-for-byte what it was.
+# get_valid excludes rows that failed an `error` check and keeps rows that only failed a
+# `warn` one — which is exactly the old expect_all_or_drop / expect_all split.
 # -------------------------------------------------------------------------------------
-# Both rule sets are defined in whoz_ingestion/expectations.py, not inline here: that module
-# imports nothing, so tests/layer3_rules/test_profile_rules.py can import it and evaluate
-# every predicate against real shape_profile() output. A rule naming a column that does not
-# exist then fails in pytest instead of passing validate and firing on nothing forever.
 @dp.temporary_view
-@dp.expect_all_or_drop(PROFILE_MUST_HOLD)
-@dp.expect_all(PROFILE_SHOULD_HOLD)
 def whoz_profile_shaped():
-    return shape_profile(spark.readStream.table(BRONZE_TABLE))
+    return dq.get_valid(spark.readStream.table("whoz_profile_checked"))
+
+
+# -------------------------------------------------------------------------------------
+# The rows that did not — every row anything fired on, with the struct saying what.
+#
+# NOT a dead-letter queue: `warn` rows are in here AND in silver.whoz_profiles, because a
+# warn-level finding is an eyebrow raised, not data withheld. Filter on
+# `_errors IS NOT NULL` for the rows that were actually kept out of silver.
+#
+# No explicit schema=. Everywhere else in this pipeline the schema is declared (see
+# PROFILE_COLUMNS) because AUTO CDC needs it and because a hand-written DDL string fails
+# silently — but this table is the base columns plus DQX's two result arrays, whose struct
+# DQX owns and may extend between minor releases. Declaring it here would mean re-deriving
+# an 11-field nested struct by hand and re-deriving it again on every DQX upgrade, to buy
+# nothing: no AUTO CDC flow reads this table, so nothing depends on its column order.
+# -------------------------------------------------------------------------------------
+@dp.table(
+    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profiles_quarantine",
+    comment=(
+        "Profile rows that failed a DQX check, with _errors/_warnings naming which. Rows with "
+        "_errors were kept OUT of silver.whoz_profiles; rows with only _warnings are in both."
+    ),
+    table_properties={"quality": "quarantine"},
+)
+def whoz_profiles_quarantine():
+    return dq.get_invalid(spark.readStream.table("whoz_profile_checked"))
 
 
 # whoz_profiles — SCD Type 1: one row per profile_id, current state only. Each new
@@ -101,31 +174,30 @@ dp.create_auto_cdc_flow(
 )
 
 
-# =====================================================================================
-# SILVER — silver.whoz_profile_completion_rules
+# -------------------------------------------------------------------------------------
+# Not modelled on purpose — empty on every one of the 4,113 records in this extract:
+#   customFields, functionalDomains, schedules, targetFunctionalDomains,
+#   targetSkillRatings, positions[].customFields, headline.mobilityDestinations
 #
-# completionDetails is a MAP keyed by rule name, NOT a struct — and it arrives as an
-# empty ARRAY [] on 723 of the 4,113 records. Exploding it to one row per
-# (profile, rule) means a new scoring rule from Whoz shows up as new *rows*, not as a
-# schema change, and the array-vs-object polymorphism is handled by the filter below.
-# =====================================================================================
-@dp.table(
-    name=f"{CATALOG}.{SILVER_SCHEMA}.whoz_profile_completion_rules",
-    comment="One row per (profile, completion rule) — unpacked from the completionDetails map.",
-    table_properties={"quality": "silver"},
-)
-def whoz_profile_completion_rules():
-    return spark.sql(f"""
-        SELECT
-            b.profile_id,
-            b.talent_id,
-            e.key                                                  AS rule_name,
-            try_variant_get(e.value, '$.satisfied', 'boolean')      AS is_satisfied,
-            try_variant_get(e.value, '$.weight',    'int')          AS weight,
-            b.ingested_at
-        FROM STREAM({BRONZE_TABLE}) AS b,
-             LATERAL variant_explode(b.payload:completionDetails) AS e
-        -- variant_explode on an object yields key/value; on the empty-array form it
-        -- yields no rows at all, which is exactly what we want.
-        WHERE e.key IS NOT NULL
-    """)
+# Rather than build empty tables, watch for them filling up. Add this check to
+# whoz_ingestion/checks/whoz_profile_shaped.yml and it will alert the first time Whoz starts
+# sending any of them — no change to this file, since the check view above already applies
+# whatever that file holds:
+#
+#   - name: unmodelled_collections_still_empty
+#     criticality: warn
+#     check:
+#       function: sql_expression
+#       arguments:
+#         expression: coalesce(custom_field_count, 0) = 0
+#         msg: Whoz has started populating a collection this pipeline does not model
+#
+# (it would need the corresponding size_of() column added to shaping/profile.py first —
+# the shaped view carries no payload column, deliberately.)
+#
+# Same idea for qualificationIds[] and targetSkills[] — 423 and 2 values respectively,
+# too thin to be worth a table today.
+#
+# This note sits here, on the profile grain, because that is where such a check would go.
+# The collections that ARE modelled each have their own file in this folder.
+# -------------------------------------------------------------------------------------

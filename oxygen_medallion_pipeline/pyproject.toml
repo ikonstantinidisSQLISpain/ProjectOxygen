@@ -9,6 +9,32 @@ dependencies = [
     #
     # LIMITATION: for pipelines, dependencies are cached during development;
     # add dependencies to the 'environment' section of your pipeline.yml file instead
+    #
+    # Everything below is a genuine *runtime* dependency of the shipped package, not a dev
+    # tool, which is why it is here rather than in the pipeline yml or the dev group. The
+    # pipeline installs this package with `--editable ${workspace.file_path}` (see
+    # resources/whoz_ingestion_etl.pipeline.yml's environment block), which resolves exactly
+    # this list — so declaring a dependency here covers both consumers at once: the
+    # serverless environment gets it from the editable install, and `uv sync --dev` gets it
+    # from the same line.
+    #
+    # pyyaml: whoz_ingestion/contract.py and checks.py read their YAML at import time,
+    # inside the pipeline.
+    "pyyaml>=6,<7",
+    # databricks-labs-dqx: the data quality engine. transformations/silver/*.py construct a
+    # DQEngine and call apply_checks_by_metadata / get_valid / get_invalid at pipeline
+    # runtime, and whoz_ingestion/checks.py calls DQEngine.validate_checks at import — so it
+    # is needed both in the pipeline and in pytest. Beta, no SLA (see README.md#data-quality-
+    # rules): pinned to a compatible-minor range rather than left open, because DQX ships
+    # roughly one breaking change per minor release.
+    "databricks-labs-dqx>=0.15,<0.16",
+    # pandas is here because DQX needs it and does not say so. Its check_funcs module
+    # imports pandas at module scope, but pandas is absent from databricks-labs-dqx's
+    # requires_dist, so `from databricks.labs.dqx.engine import DQEngine` raises
+    # ModuleNotFoundError on a clean install that only follows DQX's own metadata.
+    # Measured, not guessed. Remove this line only after checking that a fresh
+    # `uv sync --dev` still imports DQEngine.
+    "pandas>=2,<3",
 ]
 
 [dependency-groups]
@@ -37,7 +63,7 @@ builtins = ["spark"]
 [tool.pytest.ini_options]
 # "src" because the pipeline's root_path IS src (resources/whoz_ingestion_etl.pipeline.yml),
 # so at runtime that folder is on sys.path and the shared code is imported as
-# `whoz_ingestion.shaping.x` / `whoz_ingestion.expectations` — the same package path in a
+# `whoz_ingestion.shaping.x` / `whoz_ingestion.checks` — the same package path in a
 # pipeline and in pytest. Keep these two in step: pointing pytest at the same folder the
 # pipeline uses is what makes a wrong import prefix fail locally and in CI rather than
 # surviving to a deploy (which is how it was found the first time).

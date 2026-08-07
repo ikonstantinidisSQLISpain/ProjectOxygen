@@ -1,0 +1,126 @@
+# The declared schema of silver.whoz_talents and — with contract.SCD2_COLUMNS appended —
+# silver.whoz_talent_versions.
+#
+# Same one rule as whoz_profile.yml: this list must match shape_talent()'s SELECT
+# (../shaping/talent.py) column for column, type for type, and IN ORDER, because AUTO CDC
+# matches source to target positionally as well as by name.
+# tests/layer2_contract/test_talent_contract.py asserts exactly that.
+#
+# Distributions named here describe the export analysed on 2026-07-31, not a guarantee.
+columns:
+  # ---- identity (already lifted out of the payload by bronze) ----
+  - name: talent_id
+    type: STRING NOT NULL
+    comment: Whoz talent ID, stable primary key. NOT NULL is enforced upstream by talent_pk_not_null, a criticality:error DQX check, so a null-key row is withheld and quarantined
+  - name: federation_id
+    type: STRING
+    comment: Tenant identifier; a single value across this whole export (single-tenant)
+  - name: user_id
+    type: STRING
+    comment: Whoz user ObjectId behind this talent
+  - name: workspace_id
+    type: STRING
+    comment: >-
+      Workspace the talent currently belongs to; see silver.whoz_talent_workspace_history
+      for the full membership history
+
+  # ---- talent attributes ----
+  - name: permission_scope
+    type: STRING
+    comment: SECRET on every record today
+  - name: is_removed
+    type: BOOLEAN
+    comment: Soft-delete flag at the source
+  - name: is_end_user
+    type: BOOLEAN
+  - name: is_freely_assignable
+    type: BOOLEAN
+    comment: Staffing flag; false on every record today
+  - name: time_entry_preferred_unit
+    type: STRING
+    comment: DAY | HOUR
+  - name: last_connection_at
+    type: TIMESTAMP
+    comment: Last time the talent logged in to Whoz. Null for a talent who never has
+
+  # ---- the embedded profile: key + light attributes only, see shaping/talent.py's header ----
+  - name: profile_id
+    type: STRING
+    comment: >-
+      Foreign key to silver.whoz_profiles. Lifted out of the embedded profile object — the
+      profile itself is modelled from the separate profile export, not here
+  - name: profile_talent_id
+    type: STRING
+    comment: >-
+      talentId as repeated inside the embedded profile object; redundant with talent_id and
+      kept only as an integrity check (see embedded_talent_id_agrees)
+  - name: profile_version_name
+    type: STRING
+    comment: '"Main version" on every record today'
+  - name: profile_is_main_version
+    type: BOOLEAN
+  - name: profile_status
+    type: STRING
+    comment: DRAFT | VALIDATED | SUBMITTED
+  - name: profile_completion_rate
+    type: DOUBLE
+    comment: >-
+      Profile completeness score, 0-1 (0.42 = 42% complete). Source sends int on some
+      records and float on others; always read as double
+  - name: profile_container_type
+    type: STRING
+    comment: >-
+      Drift sensor: the VARIANT container type of the embedded profile — OBJECT while one
+      talent has one profile, ARRAY the day Whoz starts sending several. Watched by the
+      profile_is_not_an_array DQX check, because the array form silently NULLs every
+      profile_* column above rather than failing
+
+  # ---- audit fields from the source system ----
+  - name: source_created_at
+    type: TIMESTAMP
+    comment: When Whoz created this talent record
+  - name: source_created_by
+    type: STRING
+    comment: Whoz user ObjectId
+  - name: source_last_modified_at
+    type: TIMESTAMP
+    comment: Whoz's own last-modified time on the record — what AUTO CDC sequences by, not our ingest time
+  - name: source_last_modified_by
+    type: STRING
+
+  # ---- collection sizes: cheap, and they make quality drift obvious ----
+  - name: workspace_history_count
+    type: INT
+    comment: size(history[]) at the source; exploded rows live in silver.whoz_talent_workspace_history
+  - name: tag_count
+    type: INT
+    comment: size(tags[]) at the source; empty on every record today
+  - name: aspiration_count
+    type: INT
+    comment: size(aspirations[]) at the source; empty on every record today
+  - name: max_working_hours_count
+    type: INT
+    comment: size(maxWorkingHours[]) at the source; empty on every record today
+  - name: sharing_destination_count
+    type: INT
+    comment: size(sharingDestinations[]) at the source; empty on every record today
+  - name: qualification_count
+    type: INT
+    comment: size(qualificationIds[]) at the source
+  - name: custom_field_count
+    type: INT
+    comment: size(customFields[]) at the source; empty on every record today
+  - name: recruitment_stage_date_count
+    type: INT
+    comment: size(recruitment.stageDates[]) at the source; empty on every record today
+  - name: recruitment_workflow_step_date_count
+    type: INT
+    comment: size(recruitment.workflowStepDates[]) at the source; empty on every record today
+
+  # ---- lineage ----
+  - name: source_file
+    type: STRING
+    comment: "Bronze lineage: which landed file this talent version came from"
+  - name: ingested_at
+    type: TIMESTAMP
+    comment: "Bronze lineage: when this snapshot was ingested, not when Whoz generated it"

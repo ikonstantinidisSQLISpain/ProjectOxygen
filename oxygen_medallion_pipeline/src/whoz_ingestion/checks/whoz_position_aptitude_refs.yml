@@ -1,0 +1,20 @@
+# silver.whoz_position_aptitude_refs — the bridge; no natural id, the key is the pair.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+#
+# One check, and that is a statement rather than an oversight: nothing else about this bridge
+# table is worth watching yet. The file exists anyway, because checks.py keys datasets by
+# filename and the pipeline's check view for this dataset has to find something to apply.
+
+# The grain IS the pair, so a row missing either half joins to nothing and cannot be
+# deduplicated against anything. Quarantined rather than warned for that reason.
+#
+# ON for_each_column AND CHECK NAMES: DQX expands this into one check per column but keeps
+# the explicit `name:` verbatim on both, so the single name `keys_not_null` still identifies
+# the check in a metric label and in the test suite. Which half was null lands in the result
+# struct's `message` and `columns` fields rather than in the name — see the longer note in
+# whoz_talent_workspace_history.yml.
+- name: keys_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    for_each_column: [position_id, aptitude_id]

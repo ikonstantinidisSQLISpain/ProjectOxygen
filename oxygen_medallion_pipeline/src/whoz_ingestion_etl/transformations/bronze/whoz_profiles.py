@@ -12,7 +12,7 @@
 # of it into one VARIANT value in one row. So `raw` below is one row holding the whole
 # 4,113-element array as a single VARIANT, and we explicitly explode that array with
 # variant_explode — the same table-valued-function pattern already used in
-# silver/whoz_profile_children.py for positions[]/aptitudes[], just applied one level
+# silver/whoz_profile_positions.py for positions[]/aptitudes[], just applied one level
 # higher, at the array root instead of a nested field.
 #
 # See docs/whoz_profile_data_model.md for the field-level analysis these choices are
@@ -95,7 +95,7 @@ def whoz_profiles():
 
     # variant_explode is a table-valued generator, so it goes in the FROM clause via
     # LATERAL — there is no DataFrame equivalent that unnests a VARIANT array in one
-    # step (same reason silver/whoz_profile_children.py uses spark.sql for
+    # step (same reason the silver child modules use spark.sql for
     # positions[]/aptitudes[]). b.payload here is the whole array; e.value is one
     # profile object per row, which is what makes this one row per profile at last.
     return spark.sql("""

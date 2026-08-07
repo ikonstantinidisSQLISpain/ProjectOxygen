@@ -31,61 +31,20 @@
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-# The declared schema of silver.whoz_talents / silver.whoz_talent_versions. Same rules as
-# PROFILE_COLUMNS in shaping/profile.py: it must match shape_talent()'s SELECT column for
-# column and in order (tests/layer2_contract/test_talent_contract.py asserts exactly that),
-# and an unescaped apostrophe inside a COMMENT ends the string literal early and takes the
-# whole schema down with it — double it ('Whoz''s') and trust the tests to catch it if you
-# forget.
-#
-# Distributions named here describe the export analysed on 2026-07-31, not a guarantee.
-TALENT_COLUMNS = """
-    talent_id STRING NOT NULL COMMENT 'Whoz talent ID, stable primary key. NOT NULL is enforced upstream by talent_pk_not_null (expect_or_drop)',
-    federation_id STRING COMMENT 'Tenant identifier; a single value across this whole export (single-tenant)',
-    user_id STRING COMMENT 'Whoz user ObjectId behind this talent',
-    workspace_id STRING COMMENT 'Workspace the talent currently belongs to; see silver.whoz_talent_workspace_history for the full membership history',
-    permission_scope STRING COMMENT 'SECRET on every record today',
-    is_removed BOOLEAN COMMENT 'Soft-delete flag at the source',
-    is_end_user BOOLEAN,
-    is_freely_assignable BOOLEAN COMMENT 'Staffing flag; false on every record today',
-    time_entry_preferred_unit STRING COMMENT 'DAY | HOUR',
-    last_connection_at TIMESTAMP COMMENT 'Last time the talent logged in to Whoz. Null for a talent who never has',
-    profile_id STRING COMMENT 'Foreign key to silver.whoz_profiles. Lifted out of the embedded profile object — the profile itself is modelled from the separate profile export, not here',
-    profile_talent_id STRING COMMENT 'talentId as repeated inside the embedded profile object; redundant with talent_id and kept only as an integrity check (see embedded_talent_id_agrees)',
-    profile_version_name STRING COMMENT '"Main version" on every record today',
-    profile_is_main_version BOOLEAN,
-    profile_status STRING COMMENT 'DRAFT | VALIDATED | SUBMITTED',
-    profile_completion_rate DOUBLE COMMENT 'Profile completeness score, 0-1 (0.42 = 42% complete). Source sends int on some records and float on others; always read as double',
-    profile_container_type STRING COMMENT 'Drift sensor: the VARIANT container type of the embedded profile — OBJECT while one talent has one profile, ARRAY the day Whoz starts sending several. Watched by the profile_is_not_an_array expectation, because the array form silently NULLs every profile_* column above rather than failing',
-    source_created_at TIMESTAMP COMMENT 'When Whoz created this talent record',
-    source_created_by STRING COMMENT 'Whoz user ObjectId',
-    source_last_modified_at TIMESTAMP COMMENT 'Whoz''s own last-modified time on the record — what AUTO CDC sequences by, not our ingest time',
-    source_last_modified_by STRING,
-    workspace_history_count INT COMMENT 'size(history[]) at the source; exploded rows live in silver.whoz_talent_workspace_history',
-    tag_count INT COMMENT 'size(tags[]) at the source; empty on every record today',
-    aspiration_count INT COMMENT 'size(aspirations[]) at the source; empty on every record today',
-    max_working_hours_count INT COMMENT 'size(maxWorkingHours[]) at the source; empty on every record today',
-    sharing_destination_count INT COMMENT 'size(sharingDestinations[]) at the source; empty on every record today',
-    qualification_count INT COMMENT 'size(qualificationIds[]) at the source',
-    custom_field_count INT COMMENT 'size(customFields[]) at the source; empty on every record today',
-    recruitment_stage_date_count INT COMMENT 'size(recruitment.stageDates[]) at the source; empty on every record today',
-    recruitment_workflow_step_date_count INT COMMENT 'size(recruitment.workflowStepDates[]) at the source; empty on every record today',
-    source_file STRING COMMENT 'Bronze lineage: which landed file this talent version came from',
-    ingested_at TIMESTAMP COMMENT 'Bronze lineage: when this snapshot was ingested, not when Whoz generated it'
-"""
+from whoz_ingestion.contract import SCD2_COLUMNS, ddl, load_columns
+from whoz_ingestion.shaping import collection_size_sql
 
+# The declared schema of silver.whoz_talents / silver.whoz_talent_versions. Same shape as
+# PROFILE_COLUMNS in shaping/profile.py: the columns are data in ../schemas/whoz_talent.yml,
+# contract.ddl() renders them, and they must match shape_talent()'s SELECT column for column
+# and in order — tests/layer2_contract/test_talent_contract.py asserts exactly that.
+TALENT_COLUMN_DEFS = load_columns("whoz_talent")
+TALENT_COLUMNS = ddl(TALENT_COLUMN_DEFS)
 
 # The schema of silver.whoz_talent_versions: the same columns plus AUTO CDC's SCD2 validity
-# window. Built here rather than concatenated at the call site so
+# window. Built here rather than at the call site so
 # tests/layer2_contract/test_talent_contract.py checks the real string the pipeline uses.
-# Both columns must be TIMESTAMP to match the flow's sequence_by (source_last_modified_at).
-TALENT_HISTORY_COLUMNS = (
-    TALENT_COLUMNS
-    + """,
-    __START_AT TIMESTAMP COMMENT 'Start of this version''s validity window (SCD2, added by AUTO CDC)',
-    __END_AT TIMESTAMP COMMENT 'End of this version''s validity window; NULL means still current (SCD2, added by AUTO CDC)'
-"""
-)
+TALENT_HISTORY_COLUMNS = ddl(TALENT_COLUMN_DEFS + SCD2_COLUMNS)
 
 
 def vg(path, target_type):
@@ -96,10 +55,19 @@ def vg(path, target_type):
 def size_of(path):
     """size() of a payload collection as an INT, NULL rather than an error if it isn't one.
 
-    Note NULL, not 0, when the key is absent — the same behaviour as the *_count columns in
+    NULL, not 0, when the key is absent — the same behaviour as the *_count columns in
     shaping/profile.py, and worth knowing before summing one of these downstream.
+
+    That was not true until it was measured on a deployed pipeline. This used to be
+    `try_cast(size(cast(payload:<path> as array<variant>)) as int)`, which has two faults:
+    the try_cast guards only the outer int conversion, and `size(NULL)` is **-1** on
+    Databricks Runtime while being NULL on the local engine the tests use. Result:
+    silver.whoz_talents.tag_count was -1 on 3,629 of 4,116 rows, and aspiration_count on
+    2,656, in direct contradiction of this docstring and of schemas/whoz_talent.yml.
+    collection_size_sql fixes both; see its docstring for why no local test could have caught
+    it, and for the conf setting that now does.
     """
-    return F.expr(f"try_cast(size(cast(payload:{path} as array<variant>)) as int)")
+    return F.expr(collection_size_sql(f"try_variant_get(payload, '$.{path}', 'array<variant>')"))
 
 
 def shape_talent(bronze: DataFrame) -> DataFrame:
@@ -135,9 +103,10 @@ def shape_talent(bronze: DataFrame) -> DataFrame:
         #
         # This matters because the array form does not fail: every vg("$.profile.*") above
         # silently returns NULL, the pipeline stays green, and silver fills with talents that
-        # appear to have no profile. See the profile_is_not_an_array expectation.
-        F.regexp_extract(F.expr("schema_of_variant(payload:profile)"), r"^([A-Za-z]+)", 1)
-        .alias("profile_container_type"),
+        # appear to have no profile. See the profile_is_not_an_array DQX check.
+        F.regexp_extract(F.expr("schema_of_variant(payload:profile)"), r"^([A-Za-z]+)", 1).alias(
+            "profile_container_type"
+        ),
         # ---- audit fields from the source system ----
         vg("$.createdDate", "timestamp").alias("source_created_at"),
         vg("$.createdBy", "string").alias("source_created_by"),

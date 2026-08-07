@@ -1,22 +1,41 @@
 """Assertion helpers shared by the test modules.
 
-Three things this suite asserts over and over, each with a fiddly detail worth getting
-right exactly once:
+Things this suite asserts over and over, each with a fiddly detail worth getting right
+exactly once:
 
   * a DataFrame's schema matches a declared DDL string  -> assert_schema_matches_ddl
-  * no row violates a set of quality rules              -> assert_no_violations
-  * specific rows do violate them, as designed          -> assert_violations
+  * no DQX check skipped itself                         -> assert_no_skipped_checks
+  * no row violates a set of DQX checks                 -> assert_no_dqx_violations
+  * specific rows do violate them, as designed          -> assert_dqx_violations
 
 Import them by plain module name (`from helpers import ...`). tests/ is on sys.path because
 pyproject.toml's pythonpath names it — the test modules live in layer subfolders, so pytest's
 own "directory of the test file" insertion would only reach the subfolder. There is
 deliberately no __init__.py here, since adding one would make the import `tests.helpers`
 instead and every test module would need editing.
+
+The DQX helpers all take the *result* of `dq.apply_checks_by_metadata(df, checks)` — the
+input DataFrame with `_errors` and `_warnings` appended — rather than a DataFrame and a rule
+set, because applying the checks once and asserting several things about the one result is
+both faster and closer to what the pipeline does.
 """
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, TimestampType
+
+# DQX's default result column names. Not configured away anywhere in this project, and the
+# transformations rely on the defaults too — if that ever changes, ExtraParams'
+# result_column_names is the setting, and these two constants are the other half of it.
+ERRORS = "_errors"
+WARNINGS = "_warnings"
+
+# The row identity the DQX counters group by. A result struct array carries no row key of
+# its own, so counting *rows* rather than *result entries* needs one. It matters: a
+# for_each_column check expands into one entry per column, so a row with both halves of a
+# composite key null yields two entries under one name and would otherwise count twice —
+# where the composite SQL predicate this replaced counted the row once.
+_ROW_IX = "_dqx_row_ix"
 
 
 def to_utc_strings(df: DataFrame, fmt: str = "yyyy-MM-dd HH:mm:ss.SSS") -> DataFrame:
@@ -101,60 +120,157 @@ def assert_schema_matches_ddl(df: DataFrame, ddl: str) -> None:
     raise AssertionError("schema does not match the declared DDL:\n" + "\n".join(problems))
 
 
-def failing_counts(df: DataFrame, rules: dict[str, str]) -> dict[str, int]:
-    """For each {name: SQL predicate} rule, how many rows fail it.
+# -------------------------------------------------------------------------------------
+# DQX. Everything below operates on the result of apply_checks_by_metadata.
+# -------------------------------------------------------------------------------------
+def _all_results(result_df: DataFrame) -> DataFrame:
+    """One row per (input row, fired check): _ROW_IX, name, message, skipped.
 
-    A row fails when the predicate is not TRUE — FALSE *and* NULL both count. That is
-    the strict reading, and it is why whoz_ingestion/expectations.py requires every warn-level
-    rule to be written null-safe ("x IS NULL OR <check>"): under this counting, a rule
-    that isn't null-safe reports every row with a missing optional field as a violation.
-    Writing them null-safe means a violation always means what it says.
-
-    Evaluated one rule at a time rather than as a single aggregate. Fixtures are a
-    handful of rows, so the extra Spark jobs cost nothing, and an unresolved column name
-    then fails with the rule that caused it named in the message instead of a bare
-    AnalysisException pointing somewhere inside a 10-column aggregate.
+    _errors and _warnings are concatenated rather than examined separately, because every
+    caller here wants "did this named check fire on this row", and criticality is already
+    recorded in the checks YAML. A passing row gets NULL, not an empty array, so both need
+    coalescing before concat — that is a DQX behaviour, not a defensive habit.
     """
-    counts = {}
-    for name, sql in rules.items():
-        try:
-            counts[name] = df.filter(~F.expr(sql).eqNullSafe(F.lit(True))).count()
-        except Exception as exc:
-            # First line only. Spark appends the whole unresolved logical plan to an
-            # AnalysisException's message — several hundred lines for a 35-column
-            # DataFrame, and never the useful part. The first line is where
-            # UNRESOLVED_COLUMN.WITH_SUGGESTION puts its "Did you mean ...?" hint. The
-            # full exception is still chained below if it is ever genuinely needed.
-            cause = str(exc).split("\n")[0]
+    for column in (ERRORS, WARNINGS):
+        if column not in result_df.columns:
             raise AssertionError(
-                f"rule {name!r} could not be evaluated against this DataFrame.\n"
-                f"  predicate: {sql}\n"
-                f"  columns available: {df.columns}\n"
-                f"  cause: {cause}"
-            ) from exc
-    return counts
+                f"{column!r} is not a column of this DataFrame, so it is not the result of "
+                f"apply_checks_by_metadata. Columns: {result_df.columns}"
+            )
 
-
-def assert_no_violations(df: DataFrame, rules: dict[str, str]) -> None:
-    """Assert every row in df satisfies every rule."""
-    failures = {name: n for name, n in failing_counts(df, rules).items() if n}
-    assert not failures, (
-        f"expected no rule violations, got {failures} "
-        f"(rule name -> failing row count, out of {df.count()} rows)"
+    empty_errors = F.array().cast(result_df.schema[ERRORS].dataType)
+    empty_warnings = F.array().cast(result_df.schema[WARNINGS].dataType)
+    return (
+        result_df.withColumn(_ROW_IX, F.monotonically_increasing_id())
+        .select(
+            _ROW_IX,
+            F.explode(
+                F.concat(F.coalesce(F.col(ERRORS), empty_errors), F.coalesce(F.col(WARNINGS), empty_warnings))
+            ).alias("_result"),
+        )
+        .select(
+            _ROW_IX,
+            F.col("_result.name").alias("name"),
+            F.col("_result.message").alias("message"),
+            F.col("_result.skipped").alias("skipped"),
+        )
     )
 
 
-def assert_violations(df: DataFrame, rules: dict[str, str], expected: dict[str, int]) -> None:
-    """Assert exactly the expected rules fire, exactly the expected number of times.
+def assert_no_skipped_checks(result_df: DataFrame) -> None:
+    """Assert DQX evaluated every check rather than quietly skipping any of them.
 
-    `expected` is the complete picture, not a subset: any rule not listed must have zero
-    failures. That is what makes this catch an over-broad rule — one that also flags rows
-    it was never meant to — and not just an under-broad one.
+    THE MOST IMPORTANT ASSERTION IN THIS FILE, and the one that has no equivalent in the
+    pipeline. DQX resolves a check's columns at apply time, and when it cannot — a typo'd
+    `column:`, a `filter:` or an `sql_expression` naming something that is not there — it
+    does not fail. It SKIPS the check and emits a result struct with `skipped=true` on
+    every row. Both directions of that are silent in production:
+
+        criticality: error -> 100% of rows are quarantined and the silver table empties,
+                              while the pipeline reports a successful update
+        suppress_skipped   -> the check becomes a no-op and reports a clean 100% pass
+                              forever, which is the exact failure quality rules exist to
+                              prevent
+
+    DQEngine.validate_checks does not catch it either: it validates function names,
+    argument names and criticality, none of which need a DataFrame. Only applying the
+    checks to real columns does, which is why this is a test-suite assertion and why every
+    behaviour test in tests/layer3_rules/ calls it — including the ones whose point is that
+    checks *do* fire, since a skipped check is not a fired one.
+
+    TWO LIMITS, both measured rather than reasoned about, because this assertion is easy to
+    over-trust and both of them make it pass on a check it should have caught:
+
+      1. ZERO ROWS. DQX decides to skip at analysis time but *reports* it per row —
+         `_build_result_struct(..., skipped=True)` is a Column expression, so a result with
+         no rows carries no skip markers and there is nothing here to find. Mutating
+         `position_id` to `positon_id` in checks/whoz_position_aptitude_refs.yml fails this
+         on the `typical` fixture (2 rows) and passed silently on `hazards` (0 rows) until
+         the guard below existed. An empty result makes every assertion in this file vacuous,
+         so it is now a failure rather than a pass.
+      2. suppress_skipped. Under `ExtraParams(suppress_skipped=True)` DQX emits no marker at
+         all and this assertion cannot see the skip by any means. It is not a guard against
+         that flag — it works *because* conftest.py leaves the flag off. Do not turn it on
+         here without replacing this assertion with something else.
     """
-    actual = failing_counts(df, rules)
+    # A vacuous pass reads exactly like a real one in pytest output, and this is the assertion
+    # the whole layer leans on — so an empty result is treated as a broken test, not a clean
+    # one. Callers with a legitimately empty case should say so explicitly at the call site.
+    if result_df.isEmpty():
+        raise AssertionError(
+            "this result has no rows, so it proves nothing: DQX reports `skipped` per row, and "
+            "with no rows there is no marker to find. A typo'd column name would pass here. "
+            "Feed the checks a fixture that actually produces rows, or assert the emptiness "
+            "deliberately at the call site instead of routing it through this helper."
+        )
+
+    skipped = _all_results(result_df).filter(F.col("skipped")).select("name", "message").distinct().collect()
+    if not skipped:
+        return
+
+    columns = [c for c in result_df.columns if c not in (ERRORS, WARNINGS)]
+    detail = "\n".join(f"  - {row['name']}: {row['message']}" for row in sorted(skipped, key=lambda r: r["name"]))
+    raise AssertionError(
+        "DQX skipped these checks instead of evaluating them, which in the pipeline would "
+        "either quarantine every row or check nothing at all — both silently:\n"
+        f"{detail}\n"
+        f"columns actually available: {columns}"
+    )
+
+
+def dqx_failing_counts(result_df: DataFrame, checks: list[dict]) -> dict[str, int]:
+    """For each named check, how many rows it fired on. Zero for checks that never fired.
+
+    Every name in `checks` is present in the result, which is what lets the assertions below
+    keep the complete-dict semantics the SQL-predicate versions had: a check that fires on
+    nothing has to be visible as a 0, not as an absent key.
+
+    Rows, not result entries — see the note on _ROW_IX.
+    """
+    declared = [check["name"] for check in checks]
+    counted = {
+        row["name"]: row["n"]
+        for row in _all_results(result_df).groupBy("name").agg(F.countDistinct(_ROW_IX).alias("n")).collect()
+    }
+
+    # A name in the result that no check declares means the checks list and the result came
+    # from different applies — an easy mistake to make once a module holds several datasets,
+    # and one that would otherwise show up as a mysteriously missing violation.
+    unexpected = sorted(set(counted) - set(declared))
+    if unexpected:
+        raise AssertionError(
+            f"this result carries check names that are not in the checks list passed here: "
+            f"{unexpected}. Declared: {sorted(declared)}. Did the DataFrame and the checks "
+            f"come from the same apply_checks_by_metadata call?"
+        )
+
+    return {name: counted.get(name, 0) for name in declared}
+
+
+def assert_no_dqx_violations(result_df: DataFrame, checks: list[dict]) -> None:
+    """Assert every row satisfies every check — and that every check was actually evaluated."""
+    assert_no_skipped_checks(result_df)
+
+    failures = {name: n for name, n in dqx_failing_counts(result_df, checks).items() if n}
+    assert not failures, (
+        f"expected no check violations, got {failures} "
+        f"(check name -> failing row count, out of {result_df.count()} rows)"
+    )
+
+
+def assert_dqx_violations(result_df: DataFrame, checks: list[dict], expected: dict[str, int]) -> None:
+    """Assert exactly the expected checks fire, exactly the expected number of times.
+
+    `expected` is the complete picture, not a subset: any check not listed must have zero
+    failures. That is what makes this catch an over-broad check — one that also flags rows it
+    was never meant to — and not just an under-broad one.
+    """
+    assert_no_skipped_checks(result_df)
+
+    actual = dqx_failing_counts(result_df, checks)
     complete = {name: expected.get(name, 0) for name in actual}
     assert actual == complete, (
-        f"rule violations did not match:\n"
+        f"check violations did not match:\n"
         f"  expected: {complete}\n"
         f"  actual:   {actual}"
     )

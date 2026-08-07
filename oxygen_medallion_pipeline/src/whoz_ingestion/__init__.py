@@ -3,18 +3,34 @@
 Two consumers today, and the split between them is the reason this package exists:
 
   * the pipeline — src/whoz_ingestion_etl/transformations/**, which Lakeflow loads and
-    which imports `whoz_ingestion.shaping.<entity>` and `whoz_ingestion.expectations`
+    which imports `whoz_ingestion.shaping.<entity>` and `whoz_ingestion.checks`
   * the test suite — tests/, which imports the very same modules
 
 Nothing in this package may import `pyspark.pipelines`. That module only exists inside a
 running Lakeflow pipeline, so importing it here would make every module in this package
 uncollectable by pytest — which is precisely the property this package exists to keep.
 Plain `pyspark.sql` only: DataFrame in, DataFrame out, plus the constants that describe
-the result.
+the result. (`checks.py` imports `databricks.labs.dqx`, which is fine — DQX is a plain
+library, not a pipeline-only module, and validating checks needs no Spark session at all.)
 
   shaping/<entity>.py   `shape_<entity>(bronze) -> DataFrame`, plus that entity's
-                        `<ENTITY>_COLUMNS` DDL constants
-  expectations.py       every data quality rule in the project, as {name: SQL} dicts
+                        `<ENTITY>_COLUMNS` constants, rendered from schemas/
+  shaping/<table>.py    one module per exploded child table, named for the entity that owns
+                        it (profile_aptitudes, talent_workspace_history, …), each returning
+                        SQL text that takes the source relation as an argument
+  schemas/<entity>.yml  each table's columns, in order, as data
+  contract.py           loads a schema file and renders it as a DDL string
+  checks/<dataset>.yml  one dataset's data quality checks, as a native DQX check list
+  checks.py             loads and validates them all, exposing CHECKS
+  dq.py                 the pipeline's one lazily-built DQEngine
+
+`dq.py` is the exception to "plain pyspark.sql only" below: it imports the Databricks SDK
+and constructs a `WorkspaceClient`. That is safe here ONLY because the construction is behind
+a function — importing this package must never need credentials, or pytest cannot collect.
+
+The YAML files are read at import time, from disk, by path — so they must travel with the
+package. They do: `databricks bundle deploy` syncs all of src/, and the editable install
+resolves back to that same directory.
 
 HOW IT RESOLVES AT RUNTIME. The pipeline's root_path is src/, not src/whoz_ingestion_etl/
 (see resources/whoz_ingestion_etl.pipeline.yml), so src/ is on sys.path inside the pipeline

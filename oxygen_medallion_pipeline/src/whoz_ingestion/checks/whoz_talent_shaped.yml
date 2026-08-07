@@ -1,0 +1,95 @@
+# whoz_talent_shaped -> silver.whoz_talents / silver.whoz_talent_versions
+#
+# Applied to the shaped view, so these run once and protect both AUTO CDC targets.
+# A native DQX check list; see ../checks.py for the loader and the error/warn contract.
+
+# Named talent_pk_not_null, not talent_id_not_null: whoz_profile_shaped.yml already uses that
+# name for the *foreign* key on the profile row, and check names have to be unique across the
+# project (checks.py enforces it at import, test_rule_hygiene.py again in pytest) because they
+# surface as metric labels, where two identically-named checks on different tables read as one.
+- name: talent_pk_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: talent_id
+
+# THE important one. The talent export nests a single `profile` object, and shape_talent reads
+# it with try_variant_get("$.profile.id") etc. If Whoz ever sends several profiles per talent
+# — an ARRAY where an OBJECT used to be — none of that fails: every profile_* column silently
+# becomes NULL, the pipeline reports a healthy run, and silver fills with talents that look
+# like they have no profile. Verified against both forms on a real session; it really is silent.
+#
+# Written as "not ARRAY" rather than "is OBJECT" on purpose, so it stays quiet for a talent
+# with no profile at all (that case is talent_has_a_profile's job, below) and fires only on the
+# shape change it exists to catch. That is also why it is a sql_expression and not
+# is_not_in_list: the NULL case has to pass, and it does here because the first disjunct is
+# TRUE, never NULL.
+- name: profile_is_not_an_array
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: profile_container_type IS NULL OR profile_container_type <> 'ARRAY'
+      msg: >-
+        the nested profile arrived as an ARRAY where the pipeline models a single OBJECT, so
+        every profile_* column on this row is silently NULL rather than missing
+
+# The symptom, watched from the other side. Cheap, and it also covers the ordinary case of a
+# talent record arriving with no profile at all. If this turns out to fire broadly on real
+# data, that is information — a talent who never built a profile is plausible, and this is
+# warn-level precisely because that has not been confirmed yet.
+- name: talent_has_a_profile
+  criticality: warn
+  check:
+    function: is_not_null
+    arguments:
+      column: profile_id
+
+# The embedded profile repeats its parent's talentId. Disagreement means the payload is
+# internally inconsistent, which would make the profile_id join untrustworthy.
+#
+# The `talent_id IS NOT NULL` guard exists to keep DQX's null handling identical to the
+# predicate this replaces. `profile_talent_id = talent_id` is NULL when talent_id is NULL, and
+# a NULL expression flags nothing under DQX — whereas expect_all flagged anything not TRUE.
+# Without the guard, a row with a NULL parent key and a populated embedded key would quietly
+# stop being reported. It is quarantined by talent_pk_not_null anyway, but the count would
+# have moved, and a check's count moving for a reason nobody wrote down is how trust goes.
+- name: embedded_talent_id_agrees
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: profile_talent_id IS NULL OR (talent_id IS NOT NULL AND profile_talent_id = talent_id)
+      msg: >-
+        the embedded profile names a different talent than the record carrying it, so the
+        payload is internally inconsistent and the profile_id join cannot be trusted
+
+# Same unit hazard as the profile export's completionRate: a 0-1 fraction, not a 0-100
+# percentage. is_in_range is null-safe, so the old "IS NULL OR" prefix is gone as redundant
+# rather than translated — see the note on completion_rate_is_fraction.
+- name: profile_completion_rate_is_fraction
+  criticality: warn
+  check:
+    function: is_in_range
+    arguments:
+      column: profile_completion_rate
+      min_limit: 0
+      max_limit: 1
+
+# A login before the account existed means the two timestamps are not what we think they are —
+# most likely a time zone or precision bug at the source. Already null-safe as written: both
+# IS NULL disjuncts are TRUE-or-FALSE, never NULL, and a comparison of two non-null timestamps
+# is never NULL either, so DQX's flag-on-NOT-TRUE and the old flag-on-not-TRUE agree exactly.
+- name: last_connection_not_before_created
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: >-
+        last_connection_at IS NULL OR source_created_at IS NULL
+        OR last_connection_at >= source_created_at
+      msg: >-
+        this talent last connected before its own account was created, so one of the two
+        timestamps does not mean what the pipeline assumes — suspect a time zone or precision
+        bug at the source

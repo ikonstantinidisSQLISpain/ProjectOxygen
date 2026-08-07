@@ -1,0 +1,163 @@
+[
+  {
+    "id": "hazard-empty-collections",
+    "idpId": "1a2b3c4d-5e6f-4708-9a1b-2c3d4e5f6071",
+    "enabled": true,
+    "username": "hazard-empty@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-01-15T10:00:00.000Z",
+    "lastConnectionDate": "2025-06-01T10:00:00.000Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2025-06-01T10:00:00.000Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-collections-absent",
+    "enabled": false,
+    "username": "hazard-absent@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668c03f4080dd2051b3647b4",
+    "createdDate": "2025-12-26T05:31:40.093Z",
+    "lastModifiedBy": "null",
+    "lastModifiedDate": "2025-12-26T20:00:17.331Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-timestamp-precisions",
+    "idpId": "2b3c4d5e-6f70-4819-ab2c-3d4e5f607182",
+    "enabled": true,
+    "username": "hazard-ts@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "COLLABORATOR"
+        ]
+      }
+    },
+    "federationRoles": {
+      "668be62550f9cf5d75f87e61": {
+        "federationId": "668be62550f9cf5d75f87e61",
+        "roles": [
+          "MEMBER"
+        ]
+      }
+    },
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2024-03-01T08:00:00Z",
+    "lastConnectionDate": "2026-01-02T03:04:05Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-01-02T03:04:05Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-last-modified-by-null-string",
+    "idpId": "3c4d5e6f-7081-492a-bc3d-4e5f60718293",
+    "enabled": true,
+    "username": "hazard-nullstring@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-04-20T07:15:33.001Z",
+    "lastConnectionDate": "2025-08-11T19:02:55.480Z",
+    "lastModifiedBy": "null",
+    "lastModifiedDate": "2025-08-11T19:02:55.480Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-many-former-usernames",
+    "idpId": "4d5e6f70-8192-4a3b-cd4e-5f6071829304",
+    "enabled": false,
+    "username": "hazard-renamed@mail.com",
+    "formerUsernames": [
+      "gdpr_request_2025-12-25t20.00.15.512187206z@biznet.io",
+      "old-address-one@mail.com",
+      "old-address-two@mail.com"
+    ],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2024-11-02T13:20:00.777Z",
+    "lastConnectionDate": "2025-12-25T20:00:15.512Z",
+    "lastModifiedBy": "null",
+    "lastModifiedDate": "2025-12-25T20:00:17.331Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-rare-workspace-roles",
+    "idpId": "5e6f7081-92a3-4b4c-de5f-607182930415",
+    "enabled": true,
+    "username": "hazard-roles@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "ADVANCED"
+        ]
+      },
+      "674d911998271817b43b0f2e": {
+        "workspaceId": "674d911998271817b43b0f2e",
+        "workspaceExternalId": null,
+        "roles": [
+          "RESTRICTED"
+        ]
+      },
+      "6824d03a4be325696d537f6f": {
+        "workspaceId": "6824d03a4be325696d537f6f",
+        "workspaceExternalId": null,
+        "roles": [
+          "STANDARD"
+        ]
+      }
+    },
+    "federationRoles": {
+      "668be62550f9cf5d75f87e61": {
+        "federationId": "668be62550f9cf5d75f87e61",
+        "roles": [
+          "MEMBER"
+        ]
+      }
+    },
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-05-05T05:05:05.005Z",
+    "lastConnectionDate": "2026-05-05T05:05:05.005Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-05-05T05:05:05.005Z",
+    "removed": false,
+    "language": "en-US",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "hazard-sparse-record",
+    "username": "hazard-sparse@mail.com",
+    "createdDate": "2026-02-01T00:00:00.000Z",
+    "lastModifiedDate": "2026-02-01T00:00:00.000Z",
+    "removed": false
+  }
+]

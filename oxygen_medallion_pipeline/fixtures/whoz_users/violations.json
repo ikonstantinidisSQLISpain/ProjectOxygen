@@ -1,0 +1,185 @@
+[
+  {
+    "id": null,
+    "idpId": "6f708192-a3b4-4c5d-ef60-718293041526",
+    "enabled": true,
+    "username": "violation-null-id@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "COLLABORATOR"
+        ]
+      }
+    },
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-03T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-03T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-03T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-no-last-modified",
+    "idpId": "708192a3-b4c5-4d6e-f071-829304152637",
+    "enabled": true,
+    "username": "violation-no-lastmod@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-04T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-04T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": null,
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-two-federations",
+    "idpId": "8192a3b4-c5d6-4e7f-0718-293041526374",
+    "enabled": true,
+    "username": "violation-two-feds@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": {
+      "668be62550f9cf5d75f87e61": {
+        "federationId": "668be62550f9cf5d75f87e61",
+        "roles": [
+          "MEMBER"
+        ]
+      },
+      "77af1e3660a0df6e86f98f72": {
+        "federationId": "77af1e3660a0df6e86f98f72",
+        "roles": [
+          "MEMBER"
+        ]
+      }
+    },
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-05T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-05T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-05T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-agentic-studio-populated",
+    "idpId": "92a3b4c5-d6e7-4f08-1829-304152637485",
+    "enabled": true,
+    "username": "violation-agentic@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [
+      "STUDIO_AUTHOR"
+    ],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-06T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-06T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-06T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-removed-user",
+    "idpId": "a3b4c5d6-e7f0-4819-2930-415263748596",
+    "enabled": false,
+    "username": "violation-removed@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-07T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-07T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-07T03:03:03.003Z",
+    "removed": true,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-connected-before-created",
+    "idpId": "b4c5d6e7-f081-492a-3041-526374859607",
+    "enabled": true,
+    "username": "violation-connected-early@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": [],
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2026-03-08T03:03:03.003Z",
+    "lastConnectionDate": "2024-03-08T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-08T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-unknown-workspace-role",
+    "idpId": "c5d6e7f0-8192-4a3b-4152-637485960718",
+    "enabled": true,
+    "username": "violation-unknown-role@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "668be62650f9cf5d75f87e62",
+        "workspaceExternalId": null,
+        "roles": [
+          "SUPERUSER"
+        ]
+      }
+    },
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-09T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-09T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-09T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  },
+  {
+    "id": "violation-workspace-id-disagrees",
+    "idpId": "d6e7f081-92a3-4b4c-5263-748596071829",
+    "enabled": true,
+    "username": "violation-ws-disagrees@mail.com",
+    "formerUsernames": [],
+    "workspaceRoles": {
+      "668be62650f9cf5d75f87e62": {
+        "workspaceId": "674d911998271817b43b0f2e",
+        "workspaceExternalId": null,
+        "roles": [
+          "COLLABORATOR"
+        ]
+      }
+    },
+    "federationRoles": [],
+    "agenticStudioRoles": [],
+    "createdBy": "668be625080dd2051b364775",
+    "createdDate": "2025-03-10T03:03:03.003Z",
+    "lastConnectionDate": "2026-03-10T03:03:03.003Z",
+    "lastModifiedBy": "668be625080dd2051b364775",
+    "lastModifiedDate": "2026-03-10T03:03:03.003Z",
+    "removed": false,
+    "language": "en-GB",
+    "theme": "LIGHT"
+  }
+]
