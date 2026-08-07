@@ -1,6 +1,6 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
-from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA, METADATA_COLUMNS
 CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
 
@@ -24,4 +24,7 @@ def add_date_col():
             F.lit(1)
         )
     )
+
+    for c in METADATA_COLUMNS:
+        df = df.drop(c)
     return df
