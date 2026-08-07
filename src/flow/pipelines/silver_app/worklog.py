@@ -1,0 +1,26 @@
+import pyspark.pipelines as dp
+import pyspark.sql.functions as F
+from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
+
+
+@dp.materialized_view(
+        name=f"{CATALOG}.{TARGET_SCHEMA}.worklogs",
+        comment=(
+            "Collaboration Status, Date added as date"
+        ),
+        table_properties={
+            "quality":"silver"
+        }
+)
+def add_date_col():
+    bronze = spark.read.table(f"{CATALOG}.{READ_SCHEMA}.worklogs")
+
+    df = bronze.withColumn(
+        "date",
+        F.to_date(
+            F.concat_ws("/", F.col("day"), F.col("year_month")),
+            "dd/MM/yyyy"
+        )
+    )
+    return df
