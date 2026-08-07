@@ -1,6 +1,6 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
-import pysparl.sql.types as ty
+import pyspark.sql.types as ty
 from constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
 CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
@@ -23,9 +23,9 @@ def create_worker_table():
     df = raw.select(
         F.col("id"), # Must be string cause IDs are strings
         F.col("active").astype("boolean"),
-        F.to_date(F.col("start_date"), "dd/MM/yyyy"),
+        F.to_date(F.col("start_date"), "dd/MM/yyyy").alias("start_date"),
         F.col("mail"),
-        F.to_date(F.col("seniority_date"), "dd/MM/yyyy"),
+        F.to_date(F.col("seniority_date"), "dd/MM/yyyy").alias("seniority_date"),
         F.col("job_title"),
         F.col("fulltime_or_parttime"),
         F.col("productivity_coefficient").cast("float"), # It is between 0 and 1
@@ -66,7 +66,7 @@ def create_worker_table():
 
     df = df.withColumn(
         "tariff",
-        F.regexp_replace(F.col("tariff"), "[]", BASE_STR)
+        F.regexp_replace(F.col("tariff"), r"\[\]", BASE_STR)
     )
 
     df = df.withColumn(
