@@ -1,14 +1,17 @@
 resources:
   pipelines:
-    bronze_app:
+    app:
       name: app
       configuration:
         read.catalog: ${var.catalog}
-        read.schema: "landing"
-        target.schema: "app"
+        raw.schema: "landing"
+        bronze.schema: "bronze_app"
+        silver.schema: "silver_app"
+        mapping.schema: "silver_mappings"
       libraries:
         - glob:
-            include: "../src/flow/pipelines/app/**"
+            include: "../src/flow/pipelines/app/bronze/**"
+            include: "../src/flow/pipelines/app/silver/**"
       serverless: true
       catalog: ${var.catalog}
       schema: bronze_app

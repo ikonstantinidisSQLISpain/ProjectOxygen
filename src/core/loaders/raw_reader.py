@@ -1,4 +1,5 @@
 
+from pathlib import Path
 
 class RawReader():
 
@@ -14,13 +15,12 @@ class RawReader():
 
     @staticmethod
     def volume_path_maker(catalog: str, read_schema: str):
-        return f"/Volumes/{catalog}/{read_schema}/source/"
+        return Path(f"/Volumes/{catalog}/{read_schema}/source/")
 
     @staticmethod
     def raw_json_reader(sparkSession,
                         volume_path: str,
                         files_regex: str,
-                        inferred_schema_path: str,
                         streaming: bool = True):
         """Reads from volume expecting a list of jsons, 
         
@@ -34,6 +34,8 @@ class RawReader():
             reader = sparkSession.readStream
         else:
             reader = sparkSession.read
+
+        inferred_schema_path = Path(volume_path) / '_checkpoints' / files_regex
 
         df = reader.format("cloudFiles")
                     .option("cloudFiles.format", "json")

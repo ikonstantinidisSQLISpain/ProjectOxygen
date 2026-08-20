@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    whoz:
+      name: whoz
+      configuration:
+        read.catalog: ${var.catalog}
+        raw.schema: "landing"
+        bronze.schema: "bronze_whoz"
+        silver.schema: "silver_whoz"
+        mapping.schema: "silver_mappings"
+      libraries:
+        - glob:
+            include: "../src/flow/pipelines/whoz/bronze/**"
+            include: "../src/flow/pipelines/whoz/silver/**"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: bronze_whoz
