@@ -4,8 +4,8 @@ import pyspark.pipelines as dp
 
 
 CATALOG = spark.conf.get("read.catalog")
-TARGET_SCHEMA = spark.conf.get("target.schema")
-READ_SCHEMA = spark.conf.get("read.schema")
+TARGET_SCHEMA = spark.conf.get("bronze.schema")
+READ_SCHEMA = spark.conf.get("raw.schema")
 
 
 

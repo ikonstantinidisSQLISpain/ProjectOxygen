@@ -7,11 +7,10 @@ resources:
         raw.schema: "landing"
         bronze.schema: "bronze_app"
         silver.schema: "silver_app"
-        mapping.schema: "silver_mappings"
+        mapping.schema: "bronze_mapping"
       libraries:
         - glob:
-            include: "../src/flow/pipelines/app/bronze/**"
-            include: "../src/flow/pipelines/app/silver/**"
+            include: "../src/flow/pipelines/app/**"
       serverless: true
       catalog: ${var.catalog}
       schema: bronze_app

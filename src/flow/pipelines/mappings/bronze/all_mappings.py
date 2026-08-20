@@ -55,8 +55,8 @@ def map_json_to_table(path):
 
 
 CATALOG = spark.conf.get("read.catalog")
-TARGET_SCHEMA = spark.conf.get("target.schema")
-READ_SCHEMA = spark.conf.get("read.schema")
+TARGET_SCHEMA = spark.conf.get("bronze.schema")
+READ_SCHEMA = spark.conf.get("raw.schema")
 
 
 PATHS = [

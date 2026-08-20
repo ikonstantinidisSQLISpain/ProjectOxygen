@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import pyspark.sql.functions as F
 
 class RawReader():
 
@@ -20,7 +21,7 @@ class RawReader():
     @staticmethod
     def raw_json_reader(sparkSession,
                         volume_path: str,
-                        files_regex: str,
+                        glob_regex: str,
                         streaming: bool = True):
         """Reads from volume expecting a list of jsons, 
         
@@ -30,25 +31,34 @@ class RawReader():
         Does not bother checking changes.
         """
 
+        inferred_schema_path = Path(volume_path) / '_checkpoints' / glob_regex.split(".")[0]
+
         if streaming:
-            reader = sparkSession.readStream
+            reader = sparkSession.readStream\
+                                .format("cloudFiles")\
+                                .option("cloudFiles.format", "json")\
+                                .option("cloudFiles.schemaLocation", str(inferred_schema_path))
         else:
-            reader = sparkSession.read
+            reader = sparkSession.read.format("json")
 
-        inferred_schema_path = Path(volume_path) / '_checkpoints' / files_regex
-
-        df = reader.format("cloudFiles")
-                    .option("cloudFiles.format", "json")
-                    .option("multiLine", "true")
-                    .option("singleVariantColumn", "payload")
-                    .option("cloudFiles.schemaLocation", inferred_schema_path)
-                    .option("pathGlobFilter", files_regex)
-                    .load(volume_path)
+        df = reader.option("multiLine", "true")\
+                    .option("singleVariantColumn", "payload")\
+                    .option("pathGlobFilter", glob_regex)\
+                    .load(str(volume_path))\
                     .select(
                         "payload",
                         F.col("_metadata.file_path").alias("_source_file"),
                         F.col("_metadata.file_name").alias("_source_file_name"),
                         F.col("_metadata.file_size").alias("_source_file_size"),
                         F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
+                    ).withColumn(
+                        'payload', 
+                        F.col('payload').cast('ARRAY<STRING>')
+                    ).select(
+                        F.explode(F.col("payload")).alias("payload"),
+                        "_source_file",
+                        "_source_file_name",
+                        "_source_file_size",
+                        "_source_file_modified_at",
                     )
         return df
