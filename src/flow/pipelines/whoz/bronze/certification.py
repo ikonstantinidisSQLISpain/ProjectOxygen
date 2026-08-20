@@ -1,5 +1,8 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
+import sys, os
+sys.path.append(os.path.abspath('./src/core/loaders/raw_reader.py'))
+sys.path.append(os.path.abspath('./src/flow/pipelins/whoz/bronze/constants.py'))
 from src.core.loaders.raw_reader import RawReader
 from src.flow.pipelines.whoz.bronze.constants import CATALOG, READ_SCHEMA, TARGET_SCHEMA
 CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
