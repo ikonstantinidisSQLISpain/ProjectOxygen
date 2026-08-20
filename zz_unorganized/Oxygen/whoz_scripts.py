@@ -571,43 +571,6 @@ def cert3_check():
 
 #cert3_check()
 
-def cert4_check():
-
-    certs = whoz["cert"]
-    
-        talent_prof = dict()
-        prof_cert = dict()
-    
-        for cert in certs:
-            try:
-                prof_cert[cert["profileId"]]
-            except KeyError:
-                prof_cert[cert["profileId"]] = set()
-    
-            prof_cert[cert["profileId"]].add(cert["id"])
-    
-            try:
-                talent_prof[cert["talentId"]]
-            except KeyError:
-                talent_prof[cert["talentId"]] = set()
-    
-            talent_prof[cert["talentId"]].add(cert["profileId"])
-
-
-        talent_certs_counts = dict()
-        for tal, profs in talent_prof.items():
-            tal_prof_certs = [prof_cert[pro] for pro in profs]
-
-            data = dict()
-            ini_cert_list = tal_prof_certs[0]
-            for i, cert_list in enumerate(tal_prof_certs):
-                if i == 0:
-                    continue
-                
-
-    
-
-    return None
 
 def check_profile():
     profiles = whoz["prof"]
@@ -1939,6 +1902,8 @@ def pretty_print_dict(data: dict, depth=0):
         if isinstance(v, dict):
             print("\t"*depth, k, ':')
             pretty_print_dict(v, depth + 1)
+        elif isinstance(v, (list, tuple)):
+            print("\t"*depth, k, ':', f'len({len(v)})', v)
         else:
             print("\t"*depth, k, ':', v)
 
@@ -2241,7 +2206,478 @@ def check16_talent():
     return None
 
 
-check16_talent()
+#check16_talent()
+
+
+
+
+
+def cert4_check():
+
+    certs = whoz["cert"]
+
+    talent_prof = dict()
+    prof_cert = dict()
+
+    for cert in certs:
+        try:
+            prof_cert[cert["profileId"]]
+        except KeyError:
+            prof_cert[cert["profileId"]] = set()
+
+        prof_cert[cert["profileId"]].add(cert["id"])
+
+        try:
+            talent_prof[cert["talentId"]]
+        except KeyError:
+            talent_prof[cert["talentId"]] = set()
+
+        talent_prof[cert["talentId"]].add(cert["profileId"])
+
+
+    talent_certs_counts = dict()
+    for tal, profs in talent_prof.items():
+        tal_prof_certs = [prof_cert[pro] for pro in profs]
+
+        data = {
+            'n_profs': len(profs),
+            'times_cert_match': 0,
+            'times_cert_dont_match': 0
+        }
+        ini_cert_list = tal_prof_certs[0]
+        for i, cert_list in enumerate(tal_prof_certs):
+            if i == 0:
+                continue
+            if check_list_match(ini_cert_list, cert_list):
+                data["times_cert_match"] += 1
+            else:
+                data["times_cert_dont_match"] += 1
+
+        talent_certs_counts[tal] = data
+
+    pretty_print_dict(talent_certs_counts)
+
+    return None
+
+#cert4_check()
+
+def check17_talent():
+
+    talents = whoz["tale"]
+
+    match_counter = 0
+    prof_not_provided = 0
+    counters = {
+        'matches': 0,
+        'prof_not_provided': 0,
+        'user_id_not_provided': 0,
+        'created_by_not_provided': 0
+    }
+    for tal in talents:
+        prof_provided = False
+        try:
+            pro = get_prof(tal["profile"]["id"])
+            prof_provided = True
+        except KeyError:
+            counters["prof_not_provided"] += 1
+
+        if prof_provided:
+            user_id_provided = False
+            try:
+                tal["userId"]
+                user_id_provided = True
+            except KeyError:
+                counters["user_id_not_provided"]
+
+            created_by_provided = False
+            try:
+                pro["createdBy"]
+                created_by_provided = True
+            except KeyError:
+                counters["created_by_not_provided"] += 1
+
+            if user_id_provided and created_by_provided:
+                if tal["userId"] == pro["createdBy"]:
+                    counters["matches"] += 1
+                    print('*'*20)
+                    pretty_print_dict(tal)
+                    print('-'*20)
+                    pretty_print_dict(pro)
+                    print('*'*20)
+
+        
+
+    print(len(talents))
+    pretty_print_dict(counters)
+    return None
+
+#check17_talent()
+
+
+def check16_profile():
+
+    profiles = whoz["prof"]
+
+    fed_ids = set()
+
+    for pro in profiles:
+        fed_ids.add(pro["federationId"])
+
+    print(fed_ids)
+
+    return None
+
+#check16_profile()
+
+def check17_profile():
+
+    profiles = whoz["prof"]
+
+    counters = {
+        "n_profiles": len(profiles),
+        "skill_ratings_filled": 0,
+        "aptitudes_filled": 0,
+        "skill_rating_and_aptitudes_filled": 0,
+        "missing_skill_rating": 0,
+        "missing_aptitudes": 0
+    }
+    for pro in profiles:
+
+        sk_present = False
+        ap_present = False
+
+        try:
+            sk_filled = len(pro["skillRatings"]) > 0
+            sk_present = True
+        except KeyError:
+            counters["missing_skill_rating"] += 1
+
+        try:
+            ap_filled = len(pro["aptitudes"]) > 0
+            ap_present = True
+        except KeyError:
+            counters["missing_aptitudes"]
+
+
+        if sk_present:
+            if sk_filled:
+                counters["skill_ratings_filled"] += 1
+
+        if ap_present:
+            if ap_filled:
+                counters["aptitudes_filled"] += 1
+
+        if ap_present and sk_present:
+            if sk_filled and ap_filled:
+                counters["skill_rating_and_aptitudes_filled"] += 1
+
+    pretty_print_dict(counters)
+    return None
+
+#check17_profile()
+
+def check18_profile():
+
+    # We check if all skillsRatings are in aptitudes
+    profiles = whoz["prof"]
+
+    counters = {
+        'n_profiles': len(profiles),
+        'missing_skills': 0,
+        'missing_aptitudes': 0,
+        'sk_name_in_ap_names': list(),
+        'sk_name_not_in_ap_names': list(),
+        'ap_name_in_sk_names': list(),
+        'ap_name_not_in_sk_names': list(),
+        #
+        'sk_name_in_ap_names_ratios': list(),
+        'sk_name_not_in_ap_names_ratios': list(),
+        'ap_name_in_sk_names_ratios': list(),
+        'ap_name_not_in_sk_names_ratios': list(),
+    }
+    for pro in profiles:
+
+        sk_present = False
+        ap_present = False
+
+        try:
+            skills = pro["skillRatings"]
+            sk_names = [sk["skill"] for sk in skills]
+            ln_sk = len(skills)
+            sk_present = True
+        except KeyError:
+            counters["missing_skill_rating"] += 1
+
+        try:
+            aptitudes = pro["aptitudes"]
+            ap_names = [ap["name"] for ap in aptitudes]
+            ln_ap = len(aptitudes)
+            ap_present = True
+        except KeyError:
+            counters["missing_aptitudes"]
+
+        if sk_present and ap_present and ln_sk > 0 and ln_ap > 0:
+            counter_sk = 0
+            counter_not_sk = 0
+            for name in sk_names:
+                if name in ap_names:
+                    counter_sk += 1
+                else:
+                    counter_not_sk += 1
+            counters["sk_name_in_ap_names"].append(counter_sk)
+            counters["sk_name_not_in_ap_names"].append(counter_not_sk)
+
+            if ln_sk > 0:
+                counters["sk_name_in_ap_names_ratios"].append(counter_sk/ln_sk)
+                counters["sk_name_not_in_ap_names_ratios"].append(counter_not_sk/ln_sk)
+
+            counter_ap = 0
+            counter_not_ap = 0
+            for name in ap_names:
+                if name in sk_names:
+                    counter_ap += 1
+                else:
+                    counter_not_ap += 1
+            counters["ap_name_in_sk_names"].append(counter_ap)
+            counters["ap_name_not_in_sk_names"].append(counter_not_ap)
+
+            if ln_ap > 0:
+                counters["ap_name_in_sk_names_ratios"].append(counter_ap/ln_ap)
+                counters["ap_name_not_in_sk_names_ratios"].append(counter_not_ap/ln_ap)
+
+    counters["stat_sk_ap_in_ratios"] = get_quantiles(counters["sk_name_in_ap_names_ratios"])
+    counters["stat_sk_ap_not_in_ratios"] = get_quantiles(counters["sk_name_not_in_ap_names_ratios"])
+    counters["stat_ap_sk_in_ratios"] = get_quantiles(counters["ap_name_in_sk_names_ratios"])
+    counters["stat_ap_sk_not_in_ratios"] = get_quantiles(counters["ap_name_not_in_sk_names_ratios"])
+    pretty_print_dict(counters)
+    return None
+
+
+#check18_profile()
+
+def check19_profile():
+
+    # Checks if the qualification is a cert.
+
+    profiles = whoz["prof"]
+    certs = whoz["cert"]
+
+    cert_ids = [cert["id"] for cert in certs]
+    counters = {
+        "n_profiles": len(profiles),
+        "missing_quali": 0,
+        "quali_is_cert": list(),
+        "quali_is_not_cert": list(),
+        "quali_is_cert_ratio": list(),
+        "quali_is_not_cert_ratio": list()
+    }
+
+    for pro in profiles:
+        try:
+            qualis = pro["qualificationIds"]
+            n_qualis = len(qualis)
+            is_in_counter = 0
+            is_not_in_counter = 0
+            for q in qualis:
+                if q in cert_ids:
+                    is_in_counter += 1
+                else:
+                    is_not_in_counter += 1
+            counters["quali_is_cert"].append(is_in_counter)
+            counters["quali_is_not_cert"].append(is_not_in_counter)
+
+            if n_qualis > 0:
+                counters["quali_is_cert_ratio"].append(is_in_counter/n_qualis)
+                counters["quali_is_not_cert_ratio"].append(is_not_in_counter/n_qualis)
+        except KeyError:
+            counters["missing_quali"] += 1
+
+    counters["quali_is_cert_ratio_stats"] = get_quantiles(counters["quali_is_cert_ratio"])
+    counters["quali_is_not_cert_ratio_stats"] = get_quantiles(counters["quali_is_not_cert_ratio"])
+
+
+    pretty_print_dict(counters)
+    return None
+
+#check19_profile()
+
+
+def check18_talent():
+
+    # Gets the relation between talent and users
+
+    talents = whoz["tale"]
+    users = whoz["user"]
+
+    user_tal = dict()
+
+    missing_user_counter = 0
+    for tal in talents:
+        try:
+            u_id = tal["userId"]
+            try:
+                user_tal[u_id]
+            except KeyError:
+                user_tal[u_id] = set()
+
+            user_tal[u_id].add(tal["id"])
+        except:
+            missing_user_counter += 1
+
+    print(len(talents))
+    print(missing_user_counter)
+
+    gt_one_counter = 0
+    for k, v in user_tal.items():
+        if len(v)>1:
+            gt_one_counter += 1
+
+    print(gt_one_counter)
+
+    unique_users = 0
+    for user in users:
+        if user["id"] not in list(user_tal.keys()):
+            unique_users += 1
+
+    print(len(users))
+    print(unique_users)
+    return None
+
+
+#check18_talent()
+
+def check19_talent():
+
+    talents = whoz["tale"]
+
+    ext_tal = dict()
+    unique_ext = set()
+
+    
+    missing_ext_counter = 0
+    not_missed_counter = 0
+    for tal in talents:
+        try:
+            ext_id = tal["externalId"]
+            unique_ext.add(ext_id)
+            not_missed_counter += 1
+            try:
+                ext_tal[ext_id]
+            except KeyError:
+                ext_tal[ext_id] = set()
+
+            ext_tal[ext_id].add(tal["id"])
+        except:
+            missing_ext_counter += 1
+
+    print(len(talents))
+    print(missing_ext_counter)
+    print(not_missed_counter, len(unique_ext))
+
+    gt_one_counter = 0
+    for k, v in ext_tal.items():
+        if len(v)>1:
+            gt_one_counter += 1
+
+    print(gt_one_counter)
+
+    return None
+
+#check19_talent()
+
+
+def cert5_checks():
+    # This checks the relationship between workspace and cert, and profile and cert, and talent and cert
+
+    certs = whoz["cert"]
+
+    tal_cert = dict()
+    pro_cert = dict()
+    work_cert = dict()
+
+    missing_tal = 0
+    missing_pro = 0
+    missing_work = 0
+    for cert in certs:
+        tal_present = False
+        pro_present = False
+        work_present = False
+        try:
+            tal = cert["talentId"]
+            tal_present = True
+        except KeyError:
+            missing_tal += 1
+
+        try:
+            pro = cert["profileId"]
+            pro_present = True
+        except KeyError:
+            missing_pro += 1
+
+        try:
+            work = cert["workspaceId"]
+            work_present = True
+        except KeyError:
+            missing_work += 1
+
+        if tal_present:
+            try:
+                tal_cert[tal]
+            except KeyError:
+                tal_cert[tal] = set()
+            tal_cert[tal].add(cert["id"])
+
+        if pro_present:
+            try:
+                pro_cert[pro]
+            except KeyError:
+                pro_cert[pro] = set()
+            pro_cert[pro].add(cert["id"])
+
+        if work_present:
+            try:
+                work_cert[work]
+            except KeyError:
+                work_cert[work] = set()
+            work_cert[work].add(cert["id"])
+
+    gt1_tal = 0
+    for k,v in tal_cert.items():
+        if len(v)>2:
+            gt1_tal += 1
+
+    gt1_pro = 0
+    for k,v in pro_cert.items():
+        if len(v)>2:
+            gt1_pro += 1
+
+    gt1_work = 0
+    for k,v in work_cert.items():
+        if len(v)>2:
+            gt1_work += 1
+
+    print(len(certs))
+    print(missing_tal, missing_pro, missing_work)
+    print(gt1_tal, gt1_pro, gt1_work)
+
+    return None
+
+#cert5_checks()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

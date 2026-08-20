@@ -1,0 +1,14 @@
+resources:
+  pipelines:
+    bronze_mapping:
+      name: mapping
+      configuration:
+        read.catalog: ${var.catalog}
+        read.schema: "landing"
+        target.schema: "mapping"
+      libraries:
+        - glob:
+            include: "../src/flow/pipelines/mappings/**"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: bronze_mapping

@@ -1,0 +1,81 @@
+erDiagram
+
+    Workspace {
+        STRING id PK
+    }
+
+    Qualification {
+        STRING id PK
+    }
+
+    Federation {
+        STRING id PK
+    }
+
+    User {
+        STRING id PK
+    }
+
+    User }| -- o| User : created_by_and_modified_by
+    User }| -- o| Workspace : belongs
+    User }| -- o| Federation : belongs
+
+    User_former_usernames {
+        STRING user_id PK,FK
+        STRING username
+    }
+
+    User || -- o{ User_former_usernames : has
+
+    Profile {
+        STRING id PK
+    }
+
+    Profile }| -- o| User : created_by_and_modified_by
+    Profile }| -- o| Federation : belongs
+    Profile }| -- o{ Skill : has
+    Profile }| -- o{ Qualification : has
+    Profile }| -- o{ Certification : has
+
+    Profile_position {
+        STRING profile_id PK,FK
+        STRING position_id PK
+    }
+
+    Profile || -- o{ Profile_position : has
+    Profile_position }| -- o{ Skill : has_extra_concept_id
+    Profile_position }| -- o{ Qualification : has
+
+    
+    Talent {
+        STRING id PK
+    }
+
+    Talent }| -- o| User : created_by_and_modified_by_and_last_confirmation_date_and_is
+    Talent }| -- o| Workspace : belongs
+    Talent }o -- o| Talent : has_manager_mentor
+
+
+    Skill {
+        STRING id PK
+    }
+
+    Skill }| -- o| Federation : belongs
+    Skill }o -- o{ Skill : has_parent_many_one_or_is_part_of_many_to_many
+
+    Skill_Language {
+        STRING skill_id PK,FK
+        STRING language PK
+    }
+
+    Skill || -- |{ Skill_Language : has
+
+    Certification {
+        STRING id PK
+    }
+
+    Talent || -- o{ Certification : has
+    Certification }| -- o| Workspace : belongs
+    Certification }| -- o| User : created_by_and_modified_by
+    Certification }o -- o{ Qualification : has
+    Certification }o -- o{ Skill : has

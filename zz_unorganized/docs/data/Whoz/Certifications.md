@@ -1,0 +1,23 @@
+# Certification
+
+From introduction, "this entity represents the individual certification a user may add to its profiles."
+
+
+| Column             | Type   | Description                                       | Contraints | PK/FK | Notes                                                                                                                               |
+|--------------------|--------|---------------------------------------------------|------------|-------|-------------------------------------------------------------------------------------------------------------------------------------|
+| id                 | STRING | Identifier of the certification.                  |            | PK    |                                                                                                                                     |
+| profile_id         | STRING | Profile ID that has this cert data.               |            | FK    | There is no "individual" certification, it is attached to the profile and talent and workspace. There is no need for this to be PK. |
+| talent_id          | STRING | Talent ID that has this cert data.                |            | FK    | Same as profile_id.                                                                                                                 |
+| workspace_id       | STRING | Workspace ID that has this cert data.             |            | FK    | Same as profile_id.                                                                                                                 |
+| aiOnly             | BOOL   |                                                   |            |       |                                                                                                                                     |
+| created_by         | STRING | ID of the user that created this cert.            |            | FK    |                                                                                                                                     |
+| created_date       | DATE   | Date when this cert was created.                  |            |       |                                                                                                                                     |
+| delivering_entity  | STRING | Name of the entity that delivered this cert.      |            |       |                                                                                                                                     |
+| last_modified_by   | STRING | ID of the user that modified this cert last time. |            | FK    |                                                                                                                                     |
+| last_modified_date | DATE   | Date when this cert was modified last time.       |            |       |                                                                                                                                     |
+| title              | STRING | Title of this cert.                               |            |       |                                                                                                                                     |
+| attatchment        | STRUCT | Attatchment that confirms this cert.              |            |       | Struct Keys: uid, contentType, name, size                                                                                           |
+| description        | STRING | Description of this cert.                         |            |       |                                                                                                                                     |
+| expiration_date    | DATE   | Date when this cert expired.                      |            |       |                                                                                                                                     |
+| start_date         | DATE   | Unknown what this is.                             |            |       |                                                                                                                                     |
+| end_date           | DATE   | Unknown what this is.                             |            |       |                                                                                                                                     |

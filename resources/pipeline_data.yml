@@ -1,0 +1,14 @@
+resources:
+  pipelines:
+    bronze_data:
+      name: data
+      configuration:
+        read.catalog: ${var.catalog}
+        read.schema: "landing"
+        target.schema: "data"
+      libraries:
+        - glob:
+            include: "../src/flow/pipelines/data/**"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: bronze_data

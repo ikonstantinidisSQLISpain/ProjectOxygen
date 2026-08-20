@@ -188,8 +188,8 @@ The combination of each department working on each service line, at each zone.
 
 #### collab_status
 
-| Column          | Type    | Description                                                | Contraints | PK/FK |
-|-----------------|---------|------------------------------------------------------------|------------|-------|
+| Column                  | Type    | Description                                                | Contraints | PK/FK |
+|-------------------------|---------|------------------------------------------------------------|------------|-------|
 | worker_id               | BIGINT  | Identifier of the worker.                                  |            | PK FK |
 | department_id           | BIGINT  | Indentifier of the department where the worker is working. |            | PK FK |
 | service_line_id         | BIGINT  | Identifier of the service line the worker is working on.   |            | PK FK |
