@@ -1,8 +1,6 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
-import sys, os
-sys.path.append(os.path.abspath('./src/flow/pipelins/app/bronze/constants.py'))
-from src.flow.pipelines.app.bronze.constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
+from bronze_constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
 CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 
 

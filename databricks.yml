@@ -11,6 +11,10 @@ bundle:
   # Stable identity for this bundle's deploy state — do not regenerate on rename.
   uuid: 46e5b176-ed17-4115-8ec5-9b7b0fd69053
 
+sync:
+  include:
+    - src/**
+    
 include:
   - resources/*.yml
 

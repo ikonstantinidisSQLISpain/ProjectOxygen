@@ -10,11 +10,11 @@ resources:
         mapping.schema: "silver_mappings"
       libraries:
         - glob:
+            include: "../src/core/loaders/raw_reader.py"
+        - glob:
             include: "../src/flow/pipelines/whoz/bronze/**"
         - glob:
             include: "../src/flow/pipelines/whoz/silver/**"
-        - glob:
-            include: "../src/core/loaders/raw_reader.py"
       serverless: true
       catalog: ${var.catalog}
       schema: bronze_whoz

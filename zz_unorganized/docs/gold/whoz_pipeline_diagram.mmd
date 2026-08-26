@@ -1,0 +1,162 @@
+flowchart LR
+    %% Bronze or Raw
+    bronze_department
+    bronze_service_line
+    bronze_site
+    bronze_workers
+    bronze_leaves
+    bronze_collab_status
+    bronze_whoz_users
+    bronze_whoz_talents
+    bronze_whoz_profiles
+    bronze_whoz_skills
+    bronze_whoz_certifications
+    %% Silver
+    silver_workers
+    silver_collab_status
+    silver_collab_status_2
+
+    bronze_workers -- Transform to table and format columns --> silver_workers
+    bronze_collab_status -- Transform to table and format columns --> silver_collab_status -- decoding_status --> silver_collab_status_2
+
+    silver_service_line
+    silver_department
+    silver_zones
+    silver_zones_2
+
+    bronze_service_line -- Transform to table and select proper columns --> silver_service_line
+    bronze_department -- Transform to table and select proper columns --> silver_department
+
+    bronze_service_line -- Select columns and explode --> silver_zones -- decode_zone --> silver_zones_2
+    bronze_department -- Select columns and explode --> silver_zones
+
+    silver_department_zone_service_line
+
+    bronze_service_line -- Select columns, explode and generate mid table --> silver_department_zone_service_line
+    bronze_department -- Select columns, explode and generate mid table --> silver_department_zone_service_line
+
+    silver_site
+
+    bronze_site -- Transform to table and format --> silver_site
+
+    silver_leaves
+
+    bronze_leaves -- Transform to table and format --> silver_leaves
+
+    silver_whoz_users
+    silver_whoz_users_2
+
+    bronze_whoz_users -- Transform to table and drop columns --> silver_whoz_users -- filter those with invalid mail --> silver_whoz_users_2
+
+    silver_whoz_talents
+    silver_whoz_talents_2
+
+    bronze_whoz_talents -- Transform and drop columns --> silver_whoz_talents -- calculate extra columns --> silver_whoz_talents_2
+
+
+    silver_whoz_profiles
+    silver_whoz_profiles_2
+
+    bronze_whoz_profiles -- Transform and drop columns --> silver_whoz_profiles -- calculate columns and filter --> silver_whoz_profiles_2
+
+
+    silver_whoz_skills_2
+    bronze_whoz_skills -- Transform to table and format --> silver_whoz_skills_2
+
+    
+    silver_whoz_certifications_2
+    bronze_whoz_certifications -- Transform to table and format --> silver_whoz_certifications_2
+
+
+    silver_whoz_profile_skills
+    silver_whoz_profile_skills_2
+    silver_whoz_profiles_2 -- extract skills and make middle table --> silver_whoz_profile_skills --> silver_whoz_profile_skills_2
+    silver_whoz_skills_2 -- join and normalize the name --> silver_whoz_profile_skills_2
+    
+    silver_whoz_profile_certifications
+    silver_whoz_profile_certifications_2
+    silver_whoz_profiles_2 -- extract certifications and make middle table --> silver_whoz_profile_certifications --> silver_whoz_profile_certifications_2
+    silver_whoz_certifications_2 -- join and normalize the name --> silver_whoz_profile_certifications_2
+    
+
+
+    silver_workers_2
+    silver_workers -- join to get worker site --> silver_workers_2
+    silver_site --> silver_workers_2
+
+    silver_workers_collab
+
+    silver_workers_2 -- Join to add the collab and employee status --> silver_workers_collab
+    silver_collab_status_2 --> silver_workers_collab
+
+    silver_workers_collab_2
+
+    silver_workers_collab -- Join with two keys to add zone --> silver_workers_collab_2
+    silver_department_zone_service_line --> silver_workers_collab_2
+
+    silver_workers_collab_3
+
+    silver_workers_collab_2 --> silver_workers_collab_3
+    silver_department -- Join to add the name --> silver_workers_collab_3
+    silver_service_line -- Join to add the name --> silver_workers_collab_3
+    silver_zones_2 -- Join to add the name --> silver_workers_collab_3
+
+    %% We join now whoz data
+
+    silver_whoz_talents_3
+    silver_whoz_talents_2 --> silver_whoz_talents_3
+    silver_whoz_users_2 -- Join to add user data it is one to one --> silver_whoz_talents_3
+
+    silver_whoz_profiles_3
+
+    silver_whoz_profiles_2 --> silver_whoz_profiles_3
+    silver_whoz_talents_3 -- Join to add the talent and user data of profile one to one --> silver_whoz_profiles_3
+
+    %% lastly we join with APP
+    gold_workers_profiles
+
+    silver_whoz_profiles_3 -- Join using user_mail --> gold_workers_profiles
+    silver_workers_collab_3 --> gold_workers_profiles
+
+
+    %% We split the gold into each needed report
+
+    gold_workers_profiles_last
+    gold_workers_profiles -- Filter the last snapshot --> gold_workers_profiles_last
+
+
+    %% From all snapshots table
+    gold_workers_profiles_2
+    gold_time_series_rate
+    gold_time_series_score
+    gold_workers_profiles -- Select only date worker_id and completion_rate and score --> gold_workers_profiles_2
+    gold_workers_profiles_2 -- groupby year month and compute headcounts of completed and not completed --> gold_time_series_rate
+    gold_workers_profiles_2 -- groupby year month and compute headcounts of completed and not completed --> gold_time_series_score
+
+
+    %% From last data
+
+    gold_rate
+    gold_score
+    gold_geography
+    gold_organization
+    gold_global_competency
+    gold_seniority
+    gold_workers_profiles_last -- groupby completion_rate_bucket --> gold_rate
+    gold_workers_profiles_last -- groupby completion_score_bucket --> gold_score
+    gold_workers_profiles_last -- groupby seniority_bucket --> gold_seniority
+    gold_workers_profiles_last -- groupby country and site --> gold_geography
+    gold_workers_profiles_last -- groupby site department and service line --> gold_organization
+    gold_workers_profiles_last -- groupby job family and job --> gold_global_competency
+
+
+    %% Lastly for the skills, certifications and proficiency
+
+    gold_skills
+    gold_certifications
+    gold_proficiency
+
+    silver_whoz_profile_skills_2 -- group by skill_id --> gold_skills
+    silver_whoz_profile_skills_2 -- group by proficiency --> gold_proficiency
+    silver_whoz_profile_certifications -- group by certification_id --> gold_certifications
+

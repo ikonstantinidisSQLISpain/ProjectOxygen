@@ -1,8 +1,13 @@
-
-from pathlib import Path
+import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 
-class RawReader():
+from bronze_constants import CATALOG, READ_SCHEMA, TARGET_SCHEMA
+from pathlib import Path
+CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
+
+
+
+class RawReader(): # Hardcoded everywhere cause imports dont work
 
     @staticmethod
     def read_json(sparkSession,
@@ -62,3 +67,34 @@ class RawReader():
                         "_source_file_modified_at",
                     )
         return df
+
+
+def raw_pipe_maker(table_name, volume_path, files_glob_regex):
+
+
+    @dp.table(
+        name = f"{CATALOG}.{TARGET_SCHEMA}.raw_{table_name}",
+        comment=(
+            f"Raw {table_name}"
+        ),
+        table_properties={
+            "quality":"bronze"
+        }
+    )
+    def f():
+        return RawReader.raw_json_reader(spark, volume_path, files_glob_regex, False)
+
+    return None
+
+BASE_VOL =  RawReader.volume_path_maker(CATALOG, READ_SCHEMA, "source")
+
+WHOZ_DATA = {
+    'certifications': (BASE_VOL, "whoz__certification_report_anonymized.json"),
+    "profiles": (BASE_VOL, "whoz__profile_report_anonymized.json"),
+    "skills": (BASE_VOL, "whoz__skill_report_anonymized.json"),
+    "users": (BASE_VOL, "whoz__user_report_anonymized.json"),
+    "talents": (BASE_VOL, "whoz__talent_report_anonymized.json")
+}
+
+for name, (vol, regex) in WHOZ_DATA.items():
+    raw_pipe_maker(name, vol, regex)
