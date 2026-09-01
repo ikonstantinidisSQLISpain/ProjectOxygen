@@ -2,15 +2,18 @@
 
 Though neamed like this, it involves data from both Whoz and APP sources. The dashboards provided by this gold layer provide the analysis about the company's skills capacity aswell as the talen's whoz profile characteristics (completion, details, activity).
 
-## Profiles Completion
+## Workers profiles
 
 This table provides the needed data to know each talents profile evolution and current state. The table is aswell splitted into two in order to provide on one side a completion summary and on the other side the profiles details summary.
 
-* **Table name:** profiles_details
+* **Table name:** Workers profile
 * **Description:** Provides the neccessary information to know each talent's main profile evolution.
-* **Business value:** Profile_Details provides visibility into Talent activity and commitment to the platform through the evolution of their profile completion. At the same time, it helps validate the quality and accuracy of Talents_Skills data, serving as an indicator of overall profile data reliability.
+* **Business value:**
+    * Provides insight on talents commitment to the platform.
+    * Provides **valuable insight** on what personal needs to be redistributed, in order to optimze the projects performance.
+    * In other words, it reduces cost and time by not wasting unnecessary time into analyzing if a project can be done using current workforce or there will be a need to acquire more workfoce.
 * **Sources:** Collab_Status, Workers, Leaves, Zones, Department_Service_line_Zones, Users, Talents, Profiles
-* Steps to generate:
+* *Steps to generate:*
     1. Take Workers, Leaves, collaboration and zone from APP.
         * For zone it is neccesary to add the names of each zone.
     2. Join this 4 tables by worker and date.
@@ -106,7 +109,8 @@ This table is later splitted and summarized into the next ones:
     * gcm_job
 
 
-In all cases only one matric is calculated:
+In all cases only one metric is calculated:
 
 * **Headcount:** It represents the number of employees.
-    **Business value:** Headcount provides visibility into workforce size, distribution, and evolution over time. Combined with the available dimensions, it helps identify opportunities to redistribute and better utilize existing talent, reducing the need for additional hiring and therefore optimizing workforce costs.
+    * **Business value:** Headcount provides visibility into workforce size, distribution, and evolution over time. Combined with the available dimensions, it helps identify opportunities to redistribute and better utilize existing talent, reducing the need for additional hiring and therefore optimizing workforce costs.
+* **Dimensions:** They indicate where the value of **headcounts** needs to be applied.

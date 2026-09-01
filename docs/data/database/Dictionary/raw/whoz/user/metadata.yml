@@ -1,0 +1,20 @@
+description: A user represents a person who can log into Whoz, might be linked to talents if they represent the same person, and might have access permissions to federations and workspaces through their role.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__user_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for users.
+    format: json
+    schema: whoz
+    entity: user
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 8.28
+      max: 9.38
+      avg: 8.80
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a user.

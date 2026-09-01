@@ -1,0 +1,304 @@
+id:
+  description: The internal ID of the domain object, stability in time not guaranteed
+  type: str
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+profileId:
+  description: Internal identifier of the profile linked to this certification.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.328
+    referential_integrity: Should be granted.
+aiOnly:
+  description:
+  type: bool
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    notes:
+      - All false.
+      - Not provided in the API.
+aptitudeReferences:
+  description: List of aptitudes (skills) validated or certified by this certification.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    aptitudeId:
+      description: The internal ID of the referenced aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+      note: Does not need to reference a skill in the database.
+    conceptId:
+      description: The UUID of the referenced concept in the ontology (skill). When used in input if there is no aptitudeId, Whoz will determine which aptitude has this concept. If none, a new aptitude will be added to the profile.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+    name:
+      description: The name of the referenced aptitude. When used in input if there is nor aptitudeId nor conceptId, Whoz will determine which aptitude has this name. If none, a new aptitude will be added to the profile.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    type:
+      description: The type of the referenced aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+    referential_integrity: Should be granted, not confirmed.
+createdBy:
+  description: The internal ID of the user that created this domain object.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.066
+    unique_percen: 0.138
+    referential_integrity: Should be granted.
+createdDate:
+  description: The ISO date at which this domain object was created.
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.899
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+deliveringEntity:
+  description: Organization or institution responsible for issuing this certification. Displays in the Issuing entity field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.386
+    unique_percen: 0.108
+lastModifiedBy:
+  description: The internal ID of the last user that modified this domain object.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.125
+    referential_integrity: Should be granted.
+lastModifiedDate:
+  description: The ISO date at which this domain object was modified last.
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.984
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+obtentionDate:
+  description: Date when the certification was achieved. Displays in the Issue date field in the UI.
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.252
+    unique_percen: 0.198
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+qualificationId:
+  description: Internal identifier of the qualification associated with this certification. Displays in the Find Certification field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.467
+    unique_percen: 0.062
+    referential_integrity: Should be granted.
+    notes:
+      - In this case, it may appear as ID only or a list of IDs
+talentId:
+  description: Internal identifier of the talent who holds this certification.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.170
+    referential_integrity: Should be granted.
+title:
+  description: Name of the certification.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.005
+    unique_percen: 0.296
+workspaceId:
+  description:
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.898
+    unique_percen: 0.003
+    referential_integrity: Should be granted.
+    notes:
+      - no longer in the API
+qualificationIds:
+  description: Internal identifier of the qualification associated with this certification. Displays in the Find Certification field in the UI.
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 1
+    referential_integrity: Should be granted.
+    notes:
+      - might have empty list values.
+attachment:
+  description:
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    uid:
+      description: The Id of the uploaded attachment.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+    contentType:
+      description: MIME of the attachment file.
+      type: str
+      is_pk: false
+      is_fk: true
+    size:
+      description: Size of the file. Bytes unit.
+      type: int
+      is_pk: false
+      is_fk: false
+  quality:
+    null_percen: 0.770
+    unique_percen: 0
+    notes:
+      - Not provided by the API
+attachmentId:
+  description: The Id of the uploaded attachment.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.770
+    unique_percen: 0.119
+    referential_integrity: Should be granted.
+description:
+  description: Detailed description of the certification. Supports markdown formatting. Displays in the UI in the Description field.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.766
+    unique_percen: 0.122
+endDate:
+  description:
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.760
+    unique_percen: 0.076
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+    notes:
+      - No longer in the API.
+expirationDate:
+  description:
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.855
+    unique_percen: 0.059
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+    notes:
+      - No longer provided in the API.
+startDate:
+  description:
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.760
+    unique_percen: 0.075
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+    notes:
+      - No longer provided in the API.

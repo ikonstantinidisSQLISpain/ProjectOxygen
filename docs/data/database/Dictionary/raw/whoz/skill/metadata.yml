@@ -1,0 +1,20 @@
+description: A skill is the learned ability to perform an action with a determined result and with good execution. Also, often completed within a given amount of time.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__skill_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for skills.
+    format: json
+    schema: whoz
+    entity: skill
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 54
+      max: 68.4
+      avg: 64
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a skill.

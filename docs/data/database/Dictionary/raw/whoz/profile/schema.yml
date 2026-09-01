@@ -1,0 +1,494 @@
+id:
+  description: The internal ID of the domain object, stability in time not guaranteed.
+  type: str
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+aptitudes:
+  description: The aptitudes (skills) possessed by this Profile
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    id:
+      description: A unique internal identifier for the aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+    cumulativeExperience:
+      description: A score representing the practical use of this skill in past work experiences, training programs, certifications, and related activities. Displays in the XPS field in the UI.
+      type: int
+      nullable: true
+      is_pk: false
+      is_fk: false
+    visibility:
+      description: A definition of the visibility status of the aptitude on the profile, such as whether it is highlighted (favorite), regularly visible, or hidden. Corresponds to the Visibility and Highlighted options in the UI.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    profileId:
+      description: The internal ID of the profile associated with this aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+      notes:
+        - reference the id from the beggining.
+    conceptId:
+      description: The internal ID of the referenced concept, globally unique.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    name:
+      description: The name of the referenced skill.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    proficiency:
+      description: The expected proficiency of the skill, generally out of 0-5.
+      type: int
+      nullable: false
+      is_pk: false
+      is_fk: false
+    type:
+      description: The type of the referenced skill.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+educations:
+  description: A list of educational achievements, such as degrees, certifications, or training programs associated with the profile.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    aptitudesReferences:
+      description: The skills (aptitudes) that were used in this education
+      type: list[dict]
+      nullable: true
+      is_pk: false
+      is_fk: false
+      nested_structures:
+        aptitudeId:
+          description: The internal ID of the referenced aptitude.
+          type: str
+          nullable: false
+          is_pk: false
+          is_fk: true
+        conceptId:
+          description: The UUID of the referenced concept in the ontology (skill). When used in input if there is no aptitudeId, Whoz will determine which aptitude has this concept. If none, a new aptitude will be added to the profile.
+          type: str
+          nullable: false
+          is_pk: false
+          is_fk: false
+        name:
+          description: The name of the referenced aptitude. When used in input if there is nor aptitudeId nor conceptId, Whoz will determine which aptitude has this name. If none, a new aptitude will be added to the profile.
+          type: str
+          nullable: false
+          is_pk: false
+          is_fk: false
+        type:
+          description: The type of the referenced aptitude.
+          type: str
+          nullable: false
+          is_pk: false
+          is_fk: false
+    degree:
+      description:
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    description:
+      description:
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    address:
+      description:
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+      nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+talentId:
+  description: The internal ID of the associated talent.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+versionName:
+  description: The name of this profile version.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.019
+    unique_percen: 0.091
+main:
+  description: An indicator of whether this version is the main one for the related Talent. Use the set-as-main endpoint to change main version.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+contentLanguage:
+  description: The language in which the profile is expressed, as an ISO 639-1 tag.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.001
+federationId:
+  description: The internal identifier of the federation in which this profile is managed.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+completionDetails:
+  description:
+  type: dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API, though it is used. Maybe it is calculated or defined by the company.
+completionRate:
+  description:  A percentage indicating the completion level of this profile, based on key sections such as aptitudes and positions.
+  type: float
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.001
+    notes:
+      - percentage, range(0, 1)
+completionRateLastComputedDate:
+  description:
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.106
+    unique_percen: 0.797
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+  notes:
+    - Does not appear in the API.
+createdBy:
+  description: The internal ID of the user that created this domain object.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.152
+    unique_percen: 0.110
+createdDate:
+  description: The ISO date at which this domain object was created
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.994
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z
+customFields:
+  description: An instantiation of custom fields for the given entity.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+
+  quality:
+    null_percen: 0
+    unique_percen: 0
+functionalDomains:
+  description:
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API
+headline:
+  description: Main data about this profile.
+  type: dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0.171
+    unique_percen: 0
+lastExplicitUpdate:
+  description:
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.046
+    unique_percen: 0.950
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z
+  notes:
+    - Does not appear in the API.
+lastExplicitUpdateBy:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.152
+    unique_percen: 0.102
+lastModifiedBy:
+  description: The internal ID of the last user that modified this domain object.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.152
+    unique_percen: 0.127
+lastModifiedDate:
+  description: The ISO date at which this domain object was modified last
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.946
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z
+links:
+  description: URLs to external resources, such as LinkedIn or social media, describing the profile. Displays in the Social networks field in the UI.
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+permissionScope:
+  description: 
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    notes:
+      - Only appears the value SECRET
+  notes:
+    - Does not appear in the API.
+qualificationIds:
+  description: The internal IDs of the qualifications related to this profile.
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+removed:
+  description: A T/F indicator of whether this Profile has been deleted (soft deletion)
+  type: bool
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+resumeRelationStatus:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.718
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+schedules:
+  description:
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - does not appear in the API.
+skillRatings:
+  description:
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - does not appear in the API.
+status:
+  description: Profile status.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    possible_values:
+      - DRAFT
+      - VALIDATED
+      - SUBMITTED
+targetFunctionalDomains:
+  description:
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+targetSkillRatings:
+  description:
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+travelRange:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    possible_values:
+      - DEFAULT
+  notes:
+    - does not appear in the API.
+positions:
+  description: The list of professional experiences the Profile has held or currently holds.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+hobbies:
+  description: The description of nonprofessional interests and hobbies. Displays in the Hobbies field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.916
+    unique_percen: 0.078
+    notes:
+      - Might be separed within the string.
+resume:
+  description: The definition of the optional resume file attached to this Profile
+  type: dict
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.799
+    unique_percen: 0
+

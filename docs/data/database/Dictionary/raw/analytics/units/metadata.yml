@@ -1,0 +1,19 @@
+description: Units are the subdivision of the company. They are Business or Cost units.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/analytic/bu
+  data:
+    description: Source files for Units.
+    format: json
+    schema: analytic
+    entity: bu
+    file_naming_convention: SnapshotDate__schema_entity.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 10
+      max: 11
+      avg: 10.5
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a unit.

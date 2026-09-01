@@ -1,0 +1,193 @@
+id:
+  description: Stable UUID of this Concept
+  type: str
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+parentId:
+  description: UUID of the parent Concept.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.009
+    unique_percen: 0.315
+    referential_integrity: Should be granted.
+alsoPartOf:
+  description:
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+name:
+  description: Names of this Concept expressed in various languages
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+description:
+  description: Descriptions of this Concept expressed in various languages
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+terms:
+  description: Only for internal Whoz PSO use only. Alternate names of this Concept expressed in various languages
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+hiddenTerms:
+  description: Only for internal Whoz PSO use only. Alternate hidden names of this Concept expressed in various languages. These are never shown to the User but still serve indexation / lookup purposes.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+wikipediaLink:
+  description:
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+depiction:
+  description:
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    text:
+      description: Text to display in this language
+      type: str
+    language:
+      description: Language into which the text is expressed
+      type: str
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+type:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.002
+  notes:
+    - Does not appear in the API.
+granularity:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+coreSkills:
+  description:
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+removed:
+  description: Indicates whether this concept is removed (soft deleted)
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+nature:
+  description:
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  notes:
+    - Does not appear in the API.
+federationId:
+  description: Internal id of the federation this Concept is defined in. Null when it is a global Whoz PSO concept.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.998

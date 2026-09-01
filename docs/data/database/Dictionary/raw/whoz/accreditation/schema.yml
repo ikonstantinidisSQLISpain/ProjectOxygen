@@ -1,0 +1,261 @@
+id:
+  description: The internal ID of the domain object.
+  type: str
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+profileId:
+  description:  Internal ID of the profile to which this accreditation is linked.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.4785
+    referential_integrity: Should be granted, not confirmed though.
+aptitudeReferences:
+  description: List of aptitudes (skills) validated or certified by this accreditation.
+  type: list[dict]
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    aptitudeId:
+      description: The internal ID of the referenced aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+      note: Does not need to reference a skill in the database.
+    conceptId:
+      description: The UUID of the referenced concept in the ontology (skill). When used in input if there is no aptitudeId, Whoz will determine which aptitude has this concept. If none, a new aptitude will be added to the profile.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+    name:
+      description: The name of the referenced aptitude. When used in input if there is nor aptitudeId nor conceptId, Whoz will determine which aptitude has this name. If none, a new aptitude will be added to the profile.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+    type:
+      description: The type of the referenced aptitude.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+    referential_integrity: Should be granted, not confirmed.
+attatchment:
+  description: Data of the attatchment.
+  type: dict
+  nullable: true
+  is_pk: false
+  is_fk: false
+  nested_structures:
+    uid:
+      description: The Id of the uploaded attachment.
+      type: str
+      nullable: false
+      is_pk: false
+      is_fk: true
+    contentType:
+      description: MIME of the attachment file.
+      type: str
+      is_pk: false
+      is_fk: true
+    size:
+      description: Size of the file. Bytes unit.
+      type: int
+      is_pk: false
+      is_fk: false
+  quality:
+    null_percen: 0.810
+    unique_percen: 0.098
+    referential_integrity: Should be granted, not confirmed.
+attachmentId:
+  description: The Id of the uploaded attachment.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.810
+    unique_percen: 0.098
+    referential_integrity: Should be granted, not confirmed.
+createdBy:
+  description:  The internal ID of the user that created this domain object.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.098
+    unique_percen: 0.221
+    referential_integrity: Should be granted, not confirmed.
+createdDate:
+  description: 
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.865
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+deliveringEntity:
+  description: The organization or entity that issued this accreditation. Displays in the Issuing entity field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.184
+    unique_percen: 0.325
+federationId:
+  description: Internal ID of the federation associated with this accreditation.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.001
+    referential_integrity: Should be granted.
+    notes:
+      - Only one value appears.
+lastModifiedBy:
+  description: The internal ID of the last user that modified this domain object.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.184
+    referential_integrity: Should be granted.
+lastModifiedDate:
+  description: The ISO date at which this domain object was modified last.
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.994
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%S"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+obtentionDate:
+  description: The date when this accreditation was awarded or obtained. Displays in the Issue date field in the UI.
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.350
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+talentId:
+  description: Internal ID of the talent holding this accreditation.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0.245
+    referential_integrity: Should be granted.
+title:
+  description: The official name or title of the accreditation.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0.515
+qualificationIds:
+  description:  Internal ID of the qualification associated with this accreditation. Displays in the Find Accreditation field in the UI
+  type: list[str]
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+    notes:
+      - Might have empty lists.
+      - The API names it singular, though the value is a list. Might be API error since qualificationId was found with singular string value.
+      - It will be needed to check if the len of this list is always one.
+description:
+  description: A detailed description of the accreditation, supporting markdown formatting for better readability. Displays in the Description field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.699
+    unique_percen: 0.135
+expirationDate:
+  description: The date when this accreditation becomes invalid or expires. Displays in the Expiration date field in the UI.
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.767
+    unique_percen: 0.110
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+qualificationId:
+  description: Internal ID of the qualification associated with this accreditation. Displays in the Find Accreditation field in the UI.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.989
+    unique_percen: 0.006
+    referential_integrity: Should be granted.
+    notes:
+      - This only appears twice.
+      - Probably a remnant from previous API versions.
+
+
+

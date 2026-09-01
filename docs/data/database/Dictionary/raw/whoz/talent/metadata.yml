@@ -1,0 +1,20 @@
+description: A talent represents a person and their candidate profile. The talent has profiles with skills and availability that allow them to be associated with requests.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__talent_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for talents.
+    format: json
+    schema: whoz
+    entity: talent
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 29
+      max: 32
+      avg: 31
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a talent.

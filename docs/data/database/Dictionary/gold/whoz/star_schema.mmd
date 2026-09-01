@@ -1,0 +1,78 @@
+erDiagram
+
+    FACT_PROFILE_SNAPSHOT {
+        date date_key
+        int user_id
+        int organization_key
+        int geography_key
+        int profile_key
+        int activity_key
+        int gcm_key
+
+        decimal completion_rate
+        decimal profile_score
+    }
+
+    DIM_DATE {
+        date date_key
+        string year
+        string quarter
+        string month
+        string week
+    }
+
+    DIM_USER {
+        int user_id
+        string name
+        string mail
+        string tl_rh
+        string tl_rh_mail
+        string talent_leader
+        string talent_leader_mail
+        string seniority
+        string employee_type
+    }
+
+    DIM_ORGANIZATION {
+        int organization_key
+        string zone
+        string department
+        string service_line
+    }
+
+    DIM_GEOGRAPHY {
+        int geography_key
+        string country
+        string site
+    }
+
+    DIM_PROFILE_STATUS {
+        int profile_key
+        string profile_status
+        string profile_completion_status
+        int completion_rate_bucket
+        int completion_score_bucket
+        decimal completion_rate
+        decimal profile_score
+        string profile_score_status
+    }
+
+    DIM_ACTIVITY {
+        int activity_key
+        string last_connection_date_bucket
+        string last_modification_date_bucket
+    }
+
+    DIM_GCM {
+        int gcm_key
+        string gcm_job_family
+        string gcm_job
+    }
+
+    DIM_DATE ||--o{ FACT_PROFILE_SNAPSHOT : filters
+    DIM_USER ||--o{ FACT_PROFILE_SNAPSHOT : owns
+    DIM_ORGANIZATION ||--o{ FACT_PROFILE_SNAPSHOT : belongs
+    DIM_GEOGRAPHY ||--o{ FACT_PROFILE_SNAPSHOT : located
+    DIM_PROFILE_STATUS ||--o{ FACT_PROFILE_SNAPSHOT : profile
+    DIM_ACTIVITY ||--o{ FACT_PROFILE_SNAPSHOT : activity
+    DIM_GCM ||--o{ FACT_PROFILE_SNAPSHOT : role

@@ -160,3 +160,12 @@ flowchart LR
     silver_whoz_profile_skills_2 -- group by proficiency --> gold_proficiency
     silver_whoz_profile_certifications -- group by certification_id --> gold_certifications
 
+    %% Adoption tables
+
+    gold_connection
+    gold_modification
+    gold_profile_status
+
+    gold_workers_profiles_last -- Group by last_connection_date_bucket --> gold_connection
+    gold_workers_profiles_last -- Group by last_modification_date_bucket --> gold_modification
+    gold_workers_profiles_last -- Group by profile_status --> gold_profile_status

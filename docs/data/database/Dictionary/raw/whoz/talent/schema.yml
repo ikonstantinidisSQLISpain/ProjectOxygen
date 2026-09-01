@@ -1,0 +1,555 @@
+profile:
+  description:
+  type: dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0.002
+    unique_percen: 0.000
+  notes:
+    - Does not appear in the API.
+
+id:
+  description: The internal ID of the domain object, stability in time not guaranteed
+  type: str
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 1
+    referential_integrity: "Should be granted"
+
+federationId:
+  description: The internal ID representing the federation managing this talent.
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    referential_integrity: "Should be granted"
+
+userId:
+  description: The internal ID of the related user if any.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.461
+    unique_percen: 0.539
+    referential_integrity: "Should be granted"
+
+firstName:
+  description: First name of this person
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.354
+
+lastName:
+  description: Last name of this person
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.684
+
+address:
+  description: Postal address / physical location
+  type: list|dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures:
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+managerId:
+  description: The internal ID of the manager responsible for this talent. This grants the managet special read/write permissions to the talent's data. Displays in the Manager field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.268
+    unique_percen: 0.039
+    referential_integrity: "Should be granted"
+
+mentorId:
+  description: The internal id of the mentor (or career referent) of this talent. This grants the managet special read/write permissions to the talent's data. Displays in the Mentor field in the UI.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.548
+    unique_percen: 0.081
+    referential_integrity: "Should be granted"
+
+workspaceId:
+  description: 
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.007
+    referential_integrity: "Should be granted"
+  notes:
+    - Does not appear defined in the API.
+aspirations:
+  description: Data about the aspirations of a talent.
+  type: list|dict
+  nullable: true
+  is_pk: false
+  is_fk: false
+  nested_structures: true
+  quality:
+    null_percen: 0.661
+    unique_percen: 0.000
+
+recruitment:
+  description: Details of the recruitment process for a talent.
+  type: list|dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+gender:
+  description: The gender of the talent. Corresponds to the value of the Title field in the talent personal information.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.311
+    unique_percen: 0.000
+    possible_values:
+      - MALE
+      - FEMALE
+      - null
+
+removed:
+  description: A T/F indicator of whether this talent has been deleted (soft removal). This field is readonly, to delete a Talent, call the delete endpoint.
+  type: bool
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+externalId:
+  description: The external identifier of this domain object.
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.318
+    unique_percen: 0.681
+    referential_integrity: "Should be granted"
+
+lastConnectionDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.435
+    unique_percen: 0.565
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+createdDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 1.000
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+lastModifiedDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.999
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+removedDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.720
+    unique_percen: 0.280
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+lastInvitationDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.992
+    unique_percen: 0.008
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+availabilityConfirmationDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.999
+    unique_percen: 0.001
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+workingLifeEntryDate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.586
+    unique_percen: 0.161
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+
+birthdate:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 1.000
+    unique_percen: 0.000
+    date_format:
+      template: "%Y-%m-%d"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+
+nationalities:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.281
+    unique_percen: 0.000
+
+emails:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+permissionScope:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    possible_values:
+      - SECRET
+
+tags:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.885
+    unique_percen: 0.000
+
+sharingDestinations:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.662
+    unique_percen: 0.000
+
+history:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+maxWorkingHours:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+timeEntryPreferredUnit:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    possible_values:
+      - DAY
+
+qualificationIds:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    referential_integrity: "Should be granted"
+
+customFields:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+freelyAssignable:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: bool
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+createdBy:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.006
+
+lastModifiedBy:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.266
+    unique_percen: 0.045
+
+isAnonymized:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: bool
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+staffable:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: bool
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+initials:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.687
+    unique_percen: 0.033
+
+yearsOfExperience:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: int
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.586
+    unique_percen: 0.010
+
+phoneNumber:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.828
+    unique_percen: 0.159
+
+photo:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: dict
+  nullable: true
+  is_pk: false
+  is_fk: false
+  nested_structures: true
+  quality:
+    null_percen: 0.691
+    unique_percen: 0.000
+
+language:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.999
+    unique_percen: 0.000
+    possible_values:
+      - fr-FR
+      - en-GB
+      - null
+
+availabilityConfirmationDateLastUpdatedBy:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.9998
+    unique_percen: 0.000
+
+remoteWork:
+  description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
+  type: bool
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.9998
+    unique_percen: 0.000
