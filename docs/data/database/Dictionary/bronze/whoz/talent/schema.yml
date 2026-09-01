@@ -126,7 +126,44 @@ recruitment:
   nullable: false
   is_pk: false
   is_fk: false
-  nested_structures: true
+  nested_structures:
+    availability:
+      type: str
+    consideredFor:
+      type: str
+    firstAvailabilityDate:
+      type: str
+    recruiterId:
+      type: str
+      is_fk: true
+    source:
+      type: str
+    stage:
+      type: str
+    typeSalary:
+      type: str
+    travelTime:
+      type: str
+    terminationReason:
+      type: str
+    terminationReasonNote:
+      type: str
+    workflowStep:
+      type: int
+    stageDates:
+      type: dict
+      nested_structures:
+        date:
+          type: date
+        stage:
+          type: str
+    workflowStepDates:
+      type: dict
+      nested_structures:
+        date:
+          type: date
+        workflowStep:
+          type: str
   quality:
     null_percen: 0.000
     unique_percen: 0.000
@@ -326,7 +363,7 @@ birthdate:
 
 nationalities:
   description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
-  type: list
+  type: list[str]
   nullable: true
   is_pk: false
   is_fk: false
@@ -336,10 +373,17 @@ nationalities:
 
 emails:
   description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
-  type: list
+  type: list[dict]
   nullable: false
   is_pk: false
   is_fk: false
+  nested_structures:
+    address:
+      type: str
+    main:
+      type: bool
+    validated:
+      type: bool
   quality:
     null_percen: 0.000
     unique_percen: 0.000
@@ -358,7 +402,7 @@ permissionScope:
 
 tags:
   description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
-  type: list
+  type: list[str]
   nullable: true
   is_pk: false
   is_fk: false
@@ -378,10 +422,47 @@ sharingDestinations:
 
 history:
   description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
-  type: list
+  type: list[dict]
   nullable: false
   is_pk: false
   is_fk: false
+  nested_structures:
+    gradeId:
+      type: str
+      is_fk: true
+    roleId:
+      type: str
+      is_fk: true
+    scope:
+      type: str
+    unitCost:
+      type: dict
+      nested_structures:
+        currencyCode:
+          type: str
+        value:
+          type: float
+    unitRate:
+      type: dict
+      nested_structures:
+        currencyCode:
+          type: str
+        value:
+          type: float
+    unitInternalRate:
+      type: dict
+      nested_structures:
+        currencyCode:
+          type: str
+        value:
+          type: float
+    since:
+      type: date
+    orgUnit:
+      type: str
+    workspaceId:
+      type: str
+      is_fk: true
   quality:
     null_percen: 0.000
     unique_percen: 0.000
@@ -410,7 +491,7 @@ timeEntryPreferredUnit:
 
 qualificationIds:
   description: https://developer.whoz.com/docs/whoz-api/4b21183f6dc28-talent  (Link is provided because they may change over time)
-  type: list
+  type: list[str]
   nullable: false
   is_pk: false
   is_fk: true
@@ -444,7 +525,7 @@ createdBy:
   type: str
   nullable: false
   is_pk: false
-  is_fk: false
+  is_fk: true
   quality:
     null_percen: 0.000
     unique_percen: 0.006
@@ -454,7 +535,7 @@ lastModifiedBy:
   type: str
   nullable: true
   is_pk: false
-  is_fk: false
+  is_fk: true
   quality:
     null_percen: 0.266
     unique_percen: 0.045
@@ -539,7 +620,7 @@ availabilityConfirmationDateLastUpdatedBy:
   type: str
   nullable: true
   is_pk: false
-  is_fk: false
+  is_fk: true
   quality:
     null_percen: 0.9998
     unique_percen: 0.000
