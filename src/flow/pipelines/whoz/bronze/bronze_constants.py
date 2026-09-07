@@ -7,5 +7,6 @@ METADATA_COLUMNS = [
     "_source_file",
     "_source_file_name",
     "_source_file_size",
-    "_source_file_modified_at"
+    "_source_file_modified_at",
+    "snapshot_ts"
 ]

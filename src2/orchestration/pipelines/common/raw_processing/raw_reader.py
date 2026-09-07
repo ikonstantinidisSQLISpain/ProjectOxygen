@@ -1,23 +1,11 @@
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 from pathlib import Path
-from bronze_constants import CATALOG, TARGET_SCHEMA, READ_SCHEMA
-CATALOG, TARGET_SCHEMA, READ_SCHEMA = CATALOG(spark), TARGET_SCHEMA(spark), READ_SCHEMA(spark)
 import pyspark.sql.types as ty
 
 
 
 class RawReader(): # Hardcoded everywhere cause imports dont work
-
-    @staticmethod
-    def read_json(sparkSession,
-                  catalog: str,
-                  read_schema: str,
-                  file_name: str):
-        
-        path = f"/Volumes/{catalog}/{read_schema}/source/{file_name}.json"
-        df = sparkSession.read.option("multiLine", True).json(path)
-        return df
 
     @staticmethod
     def volume_path_maker(catalog: str, read_schema: str, volume_name: str):
@@ -41,7 +29,6 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
             return (None, "Date not provided.")
 
         date_str = file_name[:12]
-
 
         validity_count = 0
         n_chars = 11
@@ -68,11 +55,13 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
             return (None, "Date not provided.")
         return None
 
+    
     @staticmethod
     def raw_json_reader(sparkSession,
                         volume_path: str,
                         glob_regex: str,
                         streaming: bool = True):
+        
         """Reads from volume expecting a list of jsons, 
         
         Returns a table with load metadata and a column named payload.
@@ -81,13 +70,13 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
         Does not bother checking changes.
         """
 
-        inferred_schema_path = Path(volume_path) / '_checkpoints' / glob_regex.split(".")[0]
 
         if streaming:
             reader = sparkSession.readStream\
                                 .format("cloudFiles")\
                                 .option("cloudFiles.format", "json")\
-                                .option("cloudFiles.schemaLocation", str(inferred_schema_path))
+            # No need to give spark permission to infer schema because,
+            # we store the data as payload and we do it manually since spark's is not enough
         else:
             reader = sparkSession.read.format("json")
 
@@ -102,7 +91,7 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
                         F.col("_metadata.file_size").alias("_source_file_size"),
                         F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
                     ).lateralJoin(
-                        sparkSession.tvf.variant_explode(F.col("payload").outer())
+                        sparkSession.tvf.variant_explode(F.col("payload").outer()) # Outer is needed if you want to use this expression in a pipeline
                     ).select(
                         F.col("value").alias("payload"),
                         "_source_file",
@@ -124,15 +113,15 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
             .withColumn("file_name_error", F.col("resultado.file_name_error"))
             .drop("resultado")
         )
-        
+
+
         return df
 
-
-def raw_pipe_maker(table_name, volume_path, files_glob_regex):
+def raw_pipe_maker(catalog, target_schema, table_name, volume_path, files_glob_regex, streaming=False):
 
 
     @dp.table(
-        name = f"{CATALOG}.{TARGET_SCHEMA}.raw_{table_name}",
+        name = f"{catalog}.{target_schema}.raw_{table_name}",
         comment=(
             f"Raw {table_name}"
         ),
@@ -141,19 +130,6 @@ def raw_pipe_maker(table_name, volume_path, files_glob_regex):
         }
     )
     def f():
-        return RawReader.raw_json_reader(spark, volume_path, files_glob_regex, False)
+        return RawReader.raw_json_reader(spark, volume_path, files_glob_regex, streaming)
 
     return None
-
-BASE_VOL =  RawReader.volume_path_maker(CATALOG, READ_SCHEMA, "source")
-
-WHOZ_DATA = {
-    'certifications': (BASE_VOL, "whoz__certification_report_anonymized.json"),
-    "profiles": (BASE_VOL, "whoz__profile_report_anonymized.json"),
-    "skills": (BASE_VOL, "whoz__skill_report_anonymized.json"),
-    "users": (BASE_VOL, "whoz__user_report_anonymized.json"),
-    "talents": (BASE_VOL, "whoz__talent_report_anonymized.json")
-}
-
-for name, (vol, regex) in WHOZ_DATA.items():
-    raw_pipe_maker(name, vol, regex)
