@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+
 def load_json(path: str | Path) -> dict:
     """
     Loads a JSON file and return its contents as a Python dictionary.

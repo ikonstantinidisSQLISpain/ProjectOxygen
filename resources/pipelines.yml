@@ -1,0 +1,116 @@
+resources:
+  pipelines:
+    dashboards:
+      name: dashboard
+      configuration:
+        catalog: ${var.catalog}
+        raw.schema: landing
+        quarantine.schema: quarantine
+        # quarantine table names
+        quarantine.files: files
+        quarantine.sanitize: sanitize
+        # qualities names
+        qualities.bronze: bronze
+        qualities.silver: silver
+        qualities.gold: gold
+        # table tags
+        ## bronze subdivisions
+        bronze.raw: raw
+        bronze.base: base
+        bronze.current: current
+        # platform names
+        platforms.whoz: whoz
+        platforms.analytic: analytic
+        platforms.perso: perso
+        platforms.cra: cra
+        platforms.project: project
+        #
+        history.filter_expression: "day(to_date(snapshot_ts)) IN (1, 15)" # SQL where expression that filter the desired dates for history time series data, use, snapshot_ts as the column, it is later replaced with the right name.
+
+        # Volumes
+        ## Formated as:
+        #    volume.type.platform.table
+        #        volume -> always the same. (Mandatory)
+        #        type -> data or schema. (Mandatory)
+        #        platform -> any of the known platforms. (Optional)
+        #        table -> any of the known tables. (Optional)
+        volume.data: "/Volumes/oxygen_dev/landing/sharepoint_test/data"              # Default volume with all data
+        volume.schema: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/schemas"            # Default volume with all schema data
+        volume.config: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/configurations"            # Default volume with all config data
+        # volume.type.platform  --------------> Default volume for all data about such platform
+        # volume.type.platform.table_name  ---> Default volume for all data about such table
+        # --------------------------------------------------------------------------------------
+        file.schema: "" # Default file name with all schemas data about tables
+        file.config: "tables_config.json" # Default file name with all configs data about tables
+        file.default_config: "default.json" # File name with default config json. Required for missing configured raw data read.
+        # They follow the same pattern as volume
+        # --------------------------------------------------------------------------------------
+        # Glob regex that identifies the files
+        ## glob.type.platform.table_name: json file name
+        ### type --> data, schema,
+        #            data: Indicating the glob regex that identifies the data files for that table in its volume
+        #            schema: Indicating the file that has the schema json for that table
+        #            config: Indicating the file that has specific configuration for that table
+        volume.data.whoz.accreditation: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/accreditation"
+        glob.data.whoz.accreditation: "*_accreditation_*.json"
+        file.schema.whoz.accreditation: "whoz__accreditation_report.json"
+
+        volume.data.whoz.certification: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/certification"
+        glob.data.whoz.certification: "*_certification_*.json"
+        file.schema.whoz.certification: "whoz__certification_report.json"
+
+        volume.data.whoz.profile: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/profile"
+        glob.data.whoz.profile: "*_profile_*.json"
+        file.schema.whoz.profile: "whoz__profile_report.json"
+
+        volume.data.whoz.skill: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/skill"
+        glob.data.whoz.skill: "*_skill_*.json"
+        file.schema.whoz.skill: "whoz__skill_report.json"
+
+        volume.data.whoz.talent: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/talent"
+        glob.data.whoz.talent: "*_talent_*.json"
+        file.schema.whoz.talent: "whoz__talent_report.json"
+        
+        volume.data.whoz.user: "/Volumes/oxygen_dev/landing/sharepoint_test/data/whoz/user"
+        glob.data.whoz.user: "*_user_*.json"
+        file.schema.whoz.user: "whoz__user_report.json"
+        #
+        volume.data.analytic.bu: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/bu"
+        glob.data.analytic.bu: "*_bu.json"
+        file.schema.analytic.bu: "bu.json"
+        volume.data.analytic.department: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/department"
+        glob.data.analytic.department: "*_department.json"
+        file.schema.analytic.department: "department.json"
+        volume.data.analytic.entity: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/entity"
+        glob.data.analytic.entity: "*_entity.json"
+        file.schema.analytic.entity: "entity.json"
+        volume.data.analytic.service_line: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/service_line"
+        glob.data.analytic.service_line: "*_service_line.json"
+        file.schema.analytic.service_line: "service_line.json"
+        volume.data.analytic.site: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/site"
+        glob.data.analytic.site: "*_site.json"
+        file.schema.analytic.site: "site.json"
+        volume.data.analytic.society: "/Volumes/oxygen_dev/landing/sharepoint_test/data/analytic/society"
+        glob.data.analytic.society: "*_society.json"
+        file.schema.analytic.society: "society.json"
+        #
+        volume.data.perso.collab_status: "/Volumes/oxygen_dev/landing/sharepoint_test/data/perso/collab_status"
+        glob.data.perso.collab_status: "*_collab_status_*.json"
+        file.schema.perso.collab_status: "collab_status_report.json"
+        volume.data.perso.leave: "/Volumes/oxygen_dev/landing/sharepoint_test/data/perso/leaves"
+        glob.data.perso.leave: "*_leave_*.json"
+        file.schema.perso.leave: "leave_report.json"
+        volume.data.perso.workers: "/Volumes/oxygen_dev/landing/sharepoint_test/data/perso/workers"
+        glob.data.perso.workers: "*_workers.json"
+        file.schema.perso.workers: "workers.json"
+        #
+
+        ## Special cases
+        file.encode.collab_status: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/collab_status_encoder.csv"
+      libraries:
+        - file:
+            path: "../src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py"
+      root_path: "../src2/orchestration/pipelines/"
+      serverless: true
+      catalog: ${var.catalog}
+      schema: default

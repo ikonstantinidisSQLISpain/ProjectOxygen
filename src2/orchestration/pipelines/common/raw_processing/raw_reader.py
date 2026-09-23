@@ -1,8 +1,13 @@
+
+
 import pyspark.pipelines as dp
 import pyspark.sql.functions as F
 from pathlib import Path
 import pyspark.sql.types as ty
+import common.utils as ut
 
+import cloudpickle
+cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 
 class RawReader(): # Hardcoded everywhere cause imports dont work
@@ -111,25 +116,66 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
             .withColumn("resultado", get_date(F.col("_source_file_name")))
             .withColumn("snapshot_ts", F.to_date("resultado.date", "yyyy-MM-dd"))
             .withColumn("file_name_error", F.col("resultado.file_name_error"))
+            .withColumn("ingest_ts", F.current_timestamp())
             .drop("resultado")
         )
 
 
         return df
 
-def raw_pipe_maker(catalog, target_schema, table_name, volume_path, files_glob_regex, streaming=False):
+def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False):
+
+    platform_name = ut.get_platform(spark, platform)
+    target_quality = ut.get_quality(spark, "bronze")
+
+    target_schema = ut.schema_name_builder(target_quality, platform_name)
+    target_table = ut.table_name_builder("raw", table_name)
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+    read_volume = ut.get_table_volume(spark, "data", platform, table_name)
+
+    files_glob_regex = ut.get_table_glob_regex(spark, platform, table_name)
 
 
     @dp.table(
-        name = f"{catalog}.{target_schema}.raw_{table_name}",
+        name = target_path,
         comment=(
-            f"Raw {table_name}"
+            f"Raw {table_name}. Read from its JSON and loaded as payload column with metadata columns, aswell as snapshot date added."
         ),
         table_properties={
-            "quality":"bronze"
+            "quality": target_quality
         }
     )
     def f():
-        return RawReader.raw_json_reader(spark, volume_path, files_glob_regex, streaming)
+        return RawReader.raw_json_reader(spark, read_volume, files_glob_regex, streaming)
 
+
+    # We add the error derivation to quarantine table
+    quarantine_schema = ut.get_quarantine_schema(spark)
+    quarantine_table = ut.get_quarantine_table(spark, "files")
+    quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+    @dp.append_flow(
+        target=quarantine_path,
+        name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.', '_')}"
+    )
+    def f2():
+        quarantine_df = spark.readStream.table(target_path).where(F.col("snapshot_ts").isNull()).select(
+            "_source_file",
+            "_source_file_name",
+            "snapshot_ts",
+            "file_name_error"
+        )
+        return quarantine_df
+
+    return None
+
+
+def create_quarantine_table(spark, catalog):
+    """Needs to be called before pipe maker. Creates the streaming table"""
+    quarantine_schema = ut.get_quarantine_schema(spark)
+    quarantine_table = ut.get_quarantine_table(spark, "files")
+
+    dp.create_streaming_table(
+        name=f"{catalog}.{quarantine_schema}.{quarantine_table}",
+        comment="Quarantine table. Holds error in file names."
+    )
     return None

@@ -148,11 +148,11 @@ def raw_pipe_maker(table_name, volume_path, files_glob_regex):
 BASE_VOL =  RawReader.volume_path_maker(CATALOG, READ_SCHEMA, "source")
 
 WHOZ_DATA = {
-    'certifications': (BASE_VOL, "whoz__certification_report_anonymized.json"),
-    "profiles": (BASE_VOL, "whoz__profile_report_anonymized.json"),
-    "skills": (BASE_VOL, "whoz__skill_report_anonymized.json"),
-    "users": (BASE_VOL, "whoz__user_report_anonymized.json"),
-    "talents": (BASE_VOL, "whoz__talent_report_anonymized.json")
+    'certifications': (BASE_VOL, "*whoz__certification_report*.json"),
+    "profiles": (BASE_VOL, "*whoz__profile_report*.json"),
+    "skills": (BASE_VOL, "*whoz__skill_report*.json"),
+    "users": (BASE_VOL, "*whoz__user_report*.json"),
+    "talents": (BASE_VOL, "*whoz__talent_report*.json")
 }
 
 for name, (vol, regex) in WHOZ_DATA.items():

@@ -62,6 +62,18 @@ def is_timestamp(fecha):
         return False
 
 
+def is_timestamp_key(date_key):
+    if date_key in ["createdDate", 
+                    "lastModifiedDate", 
+                    "completionRateLastComputedDate", 
+                    "lastConnectionDate", 
+                    "lastInvitationDate", 
+                    "removedDate", 
+                    "availabilityConfirmationDate"]:
+        return True
+    return False
+
+
 def build_schemas(entity):
 
     file_path =  BASE / f"whoz__{entity}_report_anonymized_structure.json"
@@ -80,7 +92,7 @@ def build_schemas(entity):
         if not k.endswith("_list"):
             if isinstance(v, str):
                 if k.endswith("Date"):
-                    if is_timestamp(v):
+                    if is_timestamp_key(k):
                         schema[nk] = {
                             "type": "TIMESTAMP",
                             "format": "yyyy-MM-dd'T'HH:mm:ss.SSS"

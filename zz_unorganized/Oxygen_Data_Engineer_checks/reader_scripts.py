@@ -99,6 +99,12 @@ def custom_update(d1, d2):
 
     return updated
 
+def is_timestamp(fecha):
+    try:
+        dt.datetime.strptime(fecha.rstrip("Z"), "%Y-%m-%dT%H:%M:%S.%f")
+        return True
+    except ValueError:
+        return False
 
 
 def single_dict_process(data):
@@ -112,6 +118,14 @@ def single_dict_process(data):
             'type': val_type,
             "val": v
         }
+        if k.endswith("Date"):
+            if is_timestamp(v):
+                base["format"] = "YYYY-mm-DDTHH:MM:SS.ms"
+                base["type"] = base["type"] + " -- TIMESTAMP"
+            else:
+                base["format"] = "YYYY-mm-DD"
+                base["type"] = base["type"] + " -- DATE"
+
         if isinstance(v, dict):
             base["structure"] = single_dict_process(v)
             
@@ -282,6 +296,7 @@ def get_mid_date(prev, next_date):
 
     return new
 
+
 def get_structures_raw_json(schema, entity):
     """
     Gets the structure of all JSON files in the RawData folder and write them to RawDataStructure folder.
@@ -384,7 +399,16 @@ def get_first_file_data(schema, entity):
                 }
 
             file_data[k]["appear_count"] += 1
-            file_data[k]["data_types"].add(type(v).__name__)
+            val_type = type(v).__name__
+            if k.endswith("Date"):
+                try:
+                    if is_timestamp(v):
+                        val_type = val_type + " - TIMESTAMP (YYYY-mm-DDTHH:MM:SS.ms)"
+                    else:
+                        val_type = val_type + " - DATE (YYYY-mm-DD)"
+                except (TypeError, AttributeError):
+                    pass
+            file_data[k]["data_types"].add(val_type)
             if not isinstance(v, (list, set, dict)):
                 file_data[k]["unique_vals"].add(v)
             if v is None:
@@ -419,6 +443,7 @@ def get_files_data(schema, entity):
     write_json(path, postprocess_structure(final))
 
     return None
+
 
 
 
