@@ -59,8 +59,10 @@ merge_python_files(
         "src2/orchestration/pipelines/common/raw_processing/payload_to_table.py",
         "src2/orchestration/pipelines/common/raw_processing/snapshot_processor.py",
         "src2/orchestration/pipelines/common/silver_processing/basic_filtering_and_quarantine.py",
+        "src2/orchestration/pipelines/common/gold_processing/dimensions_and_facts.py",
+        "src2/orchestration/pipelines/common/gold_processing/dimension_date.py",
         "src2/orchestration/pipelines/all_tables_bronze_silver.py"
     ],
     "src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py",
-    ["c.", "ut.", "rr.", "sp.", "pt.", "bfq."]
+    ["c.", "ut.", "rr.", "sp.", "pt.", "bfq.", "daf.", "dd."]
 )

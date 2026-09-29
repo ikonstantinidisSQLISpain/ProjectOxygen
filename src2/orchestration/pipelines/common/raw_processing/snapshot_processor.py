@@ -94,6 +94,31 @@ def to_list(val):
         return val
     return [val]
 
+
+def create_latest_batch_stream(
+    source_table: str,
+    target_table: str,
+    checkpoint_path: str
+):
+    source_df = spark.readStream.table(source_table)
+
+    def process_batch(batch_df, batch_id):
+        (
+            batch_df.write
+                .format("delta")
+                .mode("overwrite")
+                .option("overwriteSchema", "true")
+                .saveAsTable(target_table)
+        )
+
+    return (
+        source_df.writeStream
+            .foreachBatch(process_batch)
+            .option("checkpointLocation", checkpoint_path)
+            .start()
+    )
+
+
 def snapshot_pipe_maker(spark, catalog, platform, table_name):
 
     platform_name = ut.get_platform(spark, platform)
@@ -116,7 +141,7 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
     default_config_path = Path(table_config_volume) / default_config_file_name
     table_config = ut.get_table_config(table_config_path, platform, table_name, default_config_path)
     default_config = ut.load_json(default_config_path)
-
+    """
     dp.create_streaming_table(
         name=current_table_path,
         comment=f"Last snapshot {table_name} data.",
@@ -125,10 +150,6 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
         },
         expect_all_or_drop={"not_null_snapshot_date": f"{c.SNAPSHOT_COL} IS NOT NULL"}
     )
-    #@dp.expect_or_drop("not_null_snapshot_date", f"{c.SNAPSHOT_COL} IS NOT NULL")
-    #def f():
-        #pass
-
     dp.create_auto_cdc_flow(
         target=current_table_path,
         source=read_path,
@@ -136,13 +157,85 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
         sequence_by=c.SNAPSHOT_COL
     )
     """
+
+    """
+    @dp.materialized_view(
+        name=current_table_path,
+        comment=f"Last snapshot {table_name} data.",
+        table_properties={
+            "quality": target_quality
+        }
+    )
+    @dp.expect_or_drop("not_null_snapshot_date", f"{c.SNAPSHOT_COL} IS NOT NULL")
     def f():
-        df = spark.readStream.table(read_path)
-        current_df = last_snapshot_filter(df, 
-                                          table_config["last_snapshot"]["partition_cols"], 
-                                          table_config["last_snapshot"]["extra_cols_to_skip"])
+        df = spark.readStream.table(read_path).where(f"{c.SNAPSHOT_COL} IS NOT NULL")
+        current_df = ut.max_filter(
+            df, 
+            table_config.get("last_snapshot", default_config["last_snapshot"]).get("partition_cols"), 
+            c.SNAPSHOT_COL,
+            current_table_path.replace(".","_"))
         return current_df
     """
+    
+    @dp.table(
+        name=current_table_path,
+        comment=f"Last snapshot {table_name} data.",
+        table_properties={
+            "quality": target_quality
+        }
+    )
+    @dp.expect_or_drop("not_null_snapshot_date", f"{c.SNAPSHOT_COL} IS NOT NULL")
+    def f():
+        t_name = f"{catalog}.{platform}.{table_name}_temp"
+        df = spark.readStream.table(read_path).where(f"{c.SNAPSHOT_COL} IS NOT NULL")#.createOrReplaceTempView(t_name)
+        """current_df = spark.sql(f'''
+        SELECT * FROM {t_name} AS t WHERE t.{c.SNAPSHOT_COL} > t.{c.KNOWN_SNAPSHOT} OR (
+            t.{c.SNAPSHOT_COL} = t.{c.KNOWN_SNAPSHOT}
+            AND NOT EXISTS (
+                SELECT 1
+                FROM {t_name} AS t2
+                WHERE t2.{c.SNAPSHOT_COL} > t2.{c.KNOWN_SNAPSHOT}
+        );
+        
+        ''')"""
+        
+        return df.where(f"{c.SNAPSHOT_COL} = {c.KNOWN_SNAPSHOT}") # Since the job is executed before the pipeline, it will always have the latest date stored, assuming the date in the file name is correct.
+    
+    """
+    def process_batch(batch_df, batch_id):
+        batch_df = batch_df.filter(
+            f"{c.SNAPSHOT_COL} IS NOT NULL"
+        )
+
+        batch_df.createOrReplaceTempView("current_batch")
+
+        current_df = spark.sql(f'''
+            SELECT *
+            FROM current_batch AS t
+            WHERE t.{c.SNAPSHOT_COL} > t.{c.KNOWN_SNAPSHOT}
+                OR (
+                    t.{c.SNAPSHOT_COL} = t.{c.KNOWN_SNAPSHOT}
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM current_batch AS t2
+                        WHERE t2.{c.SNAPSHOT_COL} > t2.{c.KNOWN_SNAPSHOT}
+                    )
+                )
+        ''')
+        # Aquí haces el write/merge que corresponda
+        current_df.write.mode("append").saveAsTable(target_table)
+        return None
+
+    query = (
+        spark.readStream
+            .table(read_path)
+            .writeStream
+            .foreachBatch(process_batch)
+            .option("checkpointLocation", checkpoint_path)
+            .start()
+    )
+    """
+    #create_latest_batch_stream(read_path, current_table_path, "/Volumes/oxygen_dev/landing/source/_checkpoints_write/")
 
     if table_config.get("history", None) is not None:
         @dp.table(

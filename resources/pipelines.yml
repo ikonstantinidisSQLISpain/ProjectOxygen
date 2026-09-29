@@ -107,6 +107,10 @@ resources:
 
         ## Special cases
         file.encode.collab_status: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/collab_status_encoder.csv"
+        file.encode.zone_map: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/zones.csv"
+        file.encode.department_bucu: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/bucu_department.csv"
+        file.latest_snapshot: ${var.latest_snapshots_file}
+        file.encode.site_maps: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/site_maps.csv"
       libraries:
         - file:
             path: "../src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py"
@@ -114,3 +118,12 @@ resources:
       serverless: true
       catalog: ${var.catalog}
       schema: default
+  jobs:
+    get_latest_snapshot:
+      name: get_latest_snapshot_date
+      tasks:
+        - task_key: read_and_save_latest_snapshot
+          notebook_task:
+            notebook_path: "../src2/orchestration/jobs/get_latest_snapshot/get_latest_snapshot.ipynb"
+            base_parameters:
+              latest_snapshots_file: ${var.latest_snapshots_file}

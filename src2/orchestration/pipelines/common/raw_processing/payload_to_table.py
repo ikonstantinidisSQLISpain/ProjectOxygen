@@ -126,6 +126,8 @@ def payload_top_level_to_table_pipe_maker(spark, catalog, platform, table_name):
     known_schema_file = ut.get_table_metadata_files(spark, "schema", platform, table_name)
     known_schema_path = Path(known_schema_vol) / Path(known_schema_file)
 
+    known_latest_snapshot = ut.load_json(ut.get_conf(spark, "file.latest_snapshot")).get(platform).get(table_name)
+
     @dp.table(
         name=target_path,
         comment=f"Base Bronze {table_name}. Contains the top level payload keys as columns and formatted when possible.",
@@ -142,9 +144,9 @@ def payload_top_level_to_table_pipe_maker(spark, catalog, platform, table_name):
                 ut.add_profile_score_f(
                     transform_payload_to_table(df, known_schema, metadata_cols)
                 ), 
-                "completionRate")
+                "completionRate").withColumn(c.KNOWN_SNAPSHOT, F.lit(known_latest_snapshot))
             return ndf
-        
-        return transform_payload_to_table(df, known_schema, metadata_cols)
+        ndf = transform_payload_to_table(df, known_schema, metadata_cols).withColumn(c.KNOWN_SNAPSHOT, F.lit(known_latest_snapshot))
+        return ndf
 
     return None

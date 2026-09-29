@@ -371,13 +371,22 @@ Extract multiple fields from an array of objects:
     return ndf
 
 
-def explode_variant_list_column(sparkSession, df, col_to_explode):
+def explode_variant_list_column(sparkSession, df, col_to_explode, remove_row_if_empty_list: bool = False, redo_og: bool = False):
     """Returns the same df but with the col_to_explode column exploded"""
     if col_to_explode not in df.columns:
         raise ValueError(f"{col_to_explode} not in df columns: {df.columns}")
+
+    if remove_row_if_empty_list:
+        f = sparkSession.tvf.variant_explode
+    else:
+        f = sparkSession.tvf.variant_explode_outer
+    
     ndf = df.lateralJoin(
-        sparkSession.tvf.variant_explode(F.col(col_to_explode).outer()) # Outer is needed if you want to use this expression in a pipeline
+        f(F.col(col_to_explode).outer()) # Outer is needed if you want to use this expression in a pipeline
     )
+
+    if redo_og:
+        ndf = ndf.drop(F.col(col_to_explode), F.col("key"), F.col("pos")).withColumnRenamed("value", col_to_explode)
     return ndf
 
 
@@ -403,6 +412,7 @@ def remove_cols(df, cols_to_drop, remove_metadata=True):
         cols_to_remove.extend(c.METADATA_COLUMNS)
         cols_to_remove.append(c.SNAPSHOT_COL)
         cols_to_remove.append(c.INGEST_TS_COL)
+        cols_to_remove.append(c.KNOWN_SNAPSHOT)
         cols_to_remove.append("remaining_payload")
 
     
@@ -556,6 +566,25 @@ def add_date_status(df, column: str):
              .when(days_since < 7, "Active")
              .when(days_since < 30, "Inactive - 30 days")
              .when(days_since < 90, "Inactive - 90 days")
+             .otherwise("Inactive 90+ days")
+        )
+    )
+
+
+def add_date_status_prof(df, column: str):
+    days_since = F.datediff(F.current_date(), F.to_date(F.col(column)))
+
+    return (
+        df
+        .withColumn(
+            "DaysSince",
+            days_since
+        )
+        .withColumn(
+            f"{column}_Status",
+            F.when(F.col(column).isNull(), None)
+             .when(days_since < 30, "Last month")
+             .when(days_since < 90, "Last 3 months")
              .otherwise("Inactive 90+ days")
         )
     )
@@ -1210,3 +1239,191 @@ class ProfileScoreNamespace():
 
 def add_profile_score_f(profile_df):
     return ProfileScoreNamespace().add_profile_score(profile_df)
+
+
+
+def extract_english_terms(sparkSession, skill_df, col):
+    "extracts the english term from the skill column"
+    exploded = explode_variant_list_column(sparkSession, skill_df, col)
+    exploded = exploded.drop(F.col(col), F.col("pos"), F.col("key"), F.col(col)).withColumnRenamed("value", col)
+    extracted = extract_variant_keys(exploded, col, {"language": "STRING", "text": "STRING"})
+    filtered = extracted.where(
+        (F.col(f"{col}_language") == "en")
+        | (F.col(f"{col}_language").isNull())
+    )
+    return filtered
+
+def extract_all_english_terms(sparkSession, skill_df):
+    ndf = skill_df
+    english_cols = ["name", "description", "terms", "hiddenTerms", "wikipediaLink", "depiction"]
+    for c in english_cols:
+        ndf = extract_english_terms(sparkSession, ndf, c)
+    return ndf
+
+
+def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode):
+
+    l = left_df.alias(alias_left)
+    r = right_df.alias(alias_right)
+
+    l_cols = l.columns
+    r_cols = r.columns
+
+    left_cols = list()
+
+    for col in l_cols:
+        if col in r_cols:
+            left_cols.append(
+                l[col].alias(f"{alias_left}_{col}")
+            )
+        else:
+            left_cols.append(
+                l[col].alias(f"{col}")
+            )
+
+    
+    right_cols = list()
+
+    for col in r_cols:
+        if col in l_cols:
+            right_cols.append(
+                r[col].alias(f"{alias_right}_{col}")
+            )
+        else:
+            right_cols.append(
+                r[col].alias(f"{col}")
+            )
+
+    ndf = l.join(
+        r,
+        join_on_cond,
+        how=how_mode
+    ).select(
+        *left_cols,
+        *right_cols
+    )
+
+    return ndf
+
+
+_quarantine_sanitize_created = False
+
+def create_quarantine_table_sanitize(spark, catalog):
+    """Creates the streaming table that will hold the data that needs to be sanitize. Only creates it once."""
+    global _quarantine_sanitize_created
+    if _quarantine_sanitize_created:
+        return None
+    _quarantine_sanitize_created = True
+    quarantine_schema = ut.get_quarantine_schema(spark)
+    quarantine_table = ut.get_quarantine_table(spark, "sanitize")
+
+    dp.create_streaming_table(
+        name=f"{catalog}.{quarantine_schema}.{quarantine_table}",
+        comment="Quarantine table. Holds error rows."
+    )
+    return None
+
+
+def max_filter(df, pk_cols, col_to_select, temp_view_name):
+
+    if not isinstance(pk_cols, (str, list)):
+        raise TypeError("pk_cols must be a list or str")
+
+    if not isinstance(col_to_select, str):
+        raise TypeError("col_to_select must be a str.")
+
+    if isinstance(pk_cols, str):
+        pk_cols = [pk_cols]
+
+    if not all(c in df.columns for c in pk_cols) or col_to_select not in df.columns:
+        raise ValueError("pk_cols and col_to_select must be in df columns.")
+
+    cols = [c for c in df.columns if c not in pk_cols]
+
+    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias("max_"))
+
+    df.createOrReplaceTempView(temp_view_name)
+    max_df.createOrReplaceTempView(temp_view_name + "_max")
+    """
+    # Join con el dataframe original para obtener las filas completas
+    ndf = df.join(
+        max_,
+        on=pk_cols
+    ).filter(
+        F.col(col_to_select) == F.col("max_")
+    ).drop("max_")
+    """
+
+    left_alias = "og"
+    right_alias = "m"
+    join_cols_sql = " AND ".join(f"{left_alias}.{pk} = {right_alias}.{pk}" for pk in pk_cols)
+
+    df_cols = df.columns
+    select_cols_sql = ", ".join(f"{left_alias}.{col} AS {col}" for col in df_cols)
+    
+    # We need to creat the temp view and use sql
+    ndf = spark.sql(f"SELECT {select_cols_sql} FROM {temp_view_name} AS {left_alias} LEFT JOIN {temp_view_name + "_max"} AS {right_alias} ON {join_cols_sql} WHERE {left_alias}.{col_to_select} = {right_alias}.max_")
+    return ndf
+
+
+def make_department_service_line_zones(sparkSession, department_df, service_line_df):
+    dep_sl = explode_variant_list_column(sparkSession, department_df, "associated_service_line", False, True)
+    dep_sl_zone = explode_variant_list_column(sparkSession, dep_sl, "associated_zone", False, True).withColumn("associated_service_line", F.col("associated_service_line").cast("int")).withColumn("associated_zone", F.col("associated_zone").cast("int"))
+
+    sl_dep = explode_variant_list_column(sparkSession, service_line_df, "associated_practice", False, True)
+    sl_dep_zone = explode_variant_list_column(sparkSession, sl_dep, "associated_zone", False, True).withColumn("associated_practice", F.col("associated_practice").cast("int")).withColumn("associated_zone", F.col("associated_zone").cast("int"))
+
+    ndf = custom_join(
+        dep_sl_zone,
+        sl_dep_zone,
+        "department", "service_line",
+        (
+            (dep_sl_zone["associated_zone"] == sl_dep_zone["associated_zone"])
+            & (dep_sl_zone["associated_service_line"] == sl_dep_zone["id"])
+            & (dep_sl_zone["id"] == sl_dep_zone["associated_practice"])
+        ),
+        "inner"
+    )
+
+    zone_names = spark.read.csv(get_conf(spark, "file.encode.zone_map"),
+                                header=True,
+                                inferSchema=True)
+    bucu_dep_map = spark.read.csv(get_conf(spark, "file.encode.department_bucu"),
+                                header=True,
+                                inferSchema=True)
+
+    ndf = custom_join(
+        ndf, zone_names,
+        "d_sl_z", "zone_map",
+        ndf["department_associated_zone"] == zone_names["id"],
+        "left"
+    )
+
+    ndf = custom_join(
+        ndf, bucu_dep_map,
+        "d_sl_z_2", "bucu",
+        ndf["department_name"] == bucu_dep_map["practiceName"],
+        "left"
+    )
+
+    return ndf
+
+
+def map_site(sparkSession, site_df):
+
+    site_maps = spark.read.csv(get_conf(sparkSession, "file.encode.site_maps"),
+                                header=True,
+                                inferSchema=True)
+
+    ndf = custom_join(site_df, site_maps, "site", "site_map", site_df["name"]==site_maps["site_name"], "left")
+
+    return ndf
+
+
+
+
+
+
+
+
+

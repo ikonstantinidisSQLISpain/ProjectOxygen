@@ -29,6 +29,8 @@ variables:
     description: Schema for bronze (raw) tables — always "bronze"
   silver_schema:
     description: Schema for silver (cleaned/conformed) tables — always "silver"
+  latest_snapshots_file:
+    description: File path where latest snapshot is stored.
 
 targets:
   local:
@@ -47,6 +49,7 @@ targets:
       catalog: oxygen_dev_${workspace.current_user.short_name}
       bronze_schema: bronze
       silver_schema: silver
+      latest_snapshots_file: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/latest_snapshot.json"
   dev:
     # Shared, CI-deployed environment (resources/whoz_ingestion_etl.pipeline.yml
     # deploys here on push to the 'dev' branch — see .github/workflows/databricks-cd.yml).
@@ -61,6 +64,7 @@ targets:
       catalog: oxygen_dev
       bronze_schema: bronze
       silver_schema: silver
+      latest_snapshots_file: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/latest_snapshot.json"
   test:
     # Same shape as dev, one tier up — deploys on push to the 'test' branch.
     mode: production
@@ -72,6 +76,7 @@ targets:
       catalog: oxygen_test
       bronze_schema: bronze
       silver_schema: silver
+      latest_snapshots_file: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/latest_snapshot.json"
   prod:
     mode: production
     workspace:
@@ -85,6 +90,7 @@ targets:
       catalog: oxygen_prod
       bronze_schema: bronze
       silver_schema: silver
+      latest_snapshots_file: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/latest_snapshot.json"
     permissions:
       - user_name: ikonstantinidis@sqli.com
         level: CAN_MANAGE

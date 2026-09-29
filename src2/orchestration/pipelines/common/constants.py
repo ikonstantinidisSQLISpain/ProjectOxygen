@@ -9,3 +9,5 @@ METADATA_COLUMNS = [
 
 SNAPSHOT_COL = "snapshot_ts"
 INGEST_TS_COL = "ingest_ts"
+
+KNOWN_SNAPSHOT = "known_latest_snapshot"

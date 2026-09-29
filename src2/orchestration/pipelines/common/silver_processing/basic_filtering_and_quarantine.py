@@ -8,24 +8,14 @@ from pathlib import Path
 
 
 
-
-_quarantine_sanitize_created = False
-
-def create_quarantine_table_sanitize(spark, catalog):
-    """Creates the streaming table that will hold the data that needs to be sanitize. Only creates it once."""
-    global _quarantine_sanitize_created
-    if _quarantine_sanitize_created:
-        return None
-    _quarantine_sanitize_created = True
-    quarantine_schema = ut.get_quarantine_schema(spark)
-    quarantine_table = ut.get_quarantine_table(spark, "sanitize")
-
-    dp.create_streaming_table(
-        name=f"{catalog}.{quarantine_schema}.{quarantine_table}",
-        comment="Quarantine table. Holds error rows."
-    )
-    return None
 # For silver accreditation we just need to extract the  aptitudes (skills) and ensure some quality.
+
+def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
+    
+    def f():
+        df = spark.readStream.table(read_path)
+        return ut.middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
+    return f
 
 def silver_quality_pipe_maker(spark, catalog, platform, table_name):
     # Como en la fase silver evitamos agregaciones, extraemos la tabla que contiene la relación, accreditación, profile, skill
@@ -90,10 +80,17 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
 
             if table_name == "collab_status":
                 df = ut.classify_status_code(spark, df, "status")
+
+            if table_name == "skill":
+                df = ut.extract_all_english_terms(spark, df)
+
+            if table_name == "profile":
+                df = ut.add_date_status_prof(df, "lastModifiedDate")
+
             return df
 
         if quarantine_queries is not None:
-            create_quarantine_table_sanitize(spark, catalog)
+            ut.create_quarantine_table_sanitize(spark, catalog)
             quarantine_schema = ut.get_quarantine_schema(spark)
             quarantine_table = ut.get_quarantine_table(spark, "sanitize")
             quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
@@ -106,6 +103,7 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
             def f2():
                 df = spark.readStream.table(read_path)
                 return ut.make_quarantine_table(df, quarantine_queries, pk_cols, read_path)
+
 
         if middle_table is not None:
 
@@ -143,27 +141,25 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
                     middle_table_name = f"{table_name}_{extraction_name}"
                     middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
                     if variant_paths is None:
-                        @dp.table(
+                        dp.table(
                             name=middle_table_path,
                             comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
                             table_properties={
                                 "quality": target_quality
                             }
+                        )(
+                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
                         )
-                        def f3():
-                            df = spark.readStream.table(read_path)
-                            return ut.middle_table_extractor(spark, df, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
                     else:
-                        @dp.table(
+                        dp.table(
                             name=middle_table_path,
                             comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
                             table_properties={
                                 "quality": target_quality
                             }
+                        )(
+                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
                         )
-                        def f3():
-                            df = spark.readStream.table(read_path)
-                            return ut.middle_table_extractor(spark, df, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
             else:
                 extraction_name = middle_table.get("extraction_names", None)
                 middle_table_name = f"{table_name}_{extraction_name}"

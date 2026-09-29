@@ -6,9 +6,6 @@ from pathlib import Path
 import pyspark.sql.types as ty
 import common.utils as ut
 
-import cloudpickle
-cloudpickle.register_pickle_by_value(sys.modules[__name__])
-
 
 class RawReader(): # Hardcoded everywhere cause imports dont work
 
@@ -95,9 +92,8 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
                         F.col("_metadata.file_name").alias("_source_file_name"),
                         F.col("_metadata.file_size").alias("_source_file_size"),
                         F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
-                    ).lateralJoin(
-                        sparkSession.tvf.variant_explode(F.col("payload").outer()) # Outer is needed if you want to use this expression in a pipeline
-                    ).select(
+                    )
+        df = ut.explode_variant_list_column(sparkSession, df, "payload", remove_row_if_empty_list=True).select(
                         F.col("value").alias("payload"),
                         "_source_file",
                         "_source_file_name",
