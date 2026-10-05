@@ -72,9 +72,16 @@ def last_snapshot_filter(snapshot_df, partition_cols, extra_cols_to_skip=None):
     return newdf
 
 
-def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr):
+def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr, history_extra_constraints):
 
     cols = snapshot_df.columns
+
+    ndf = snapshot_df
+    if history_extra_constraints is not None:
+        if not isinstance(history_extra_constraints, list):
+            raise TypeError("history_extra_constraints must be a list of sql constraints")
+        for con in history_extra_constraints:
+            ndf = ndf.where(con)
 
     if not isinstance(cols_to_keep, list):
         raise ValueError("columns to keep must be a list.")
@@ -84,9 +91,9 @@ def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr):
 
     cols_to_keep_2 = list(cols_to_keep)
     cols_to_keep_2.append(c.SNAPSHOT_COL)
-    df = snapshot_df.where(dates_filter_expr.replace("snapshot_ts", c.SNAPSHOT_COL)).select(*cols_to_keep_2)
+    ndf = ndf.where(dates_filter_expr.replace("snapshot_ts", c.SNAPSHOT_COL).replace("latest_snapshot_date", c.KNOWN_SNAPSHOT)).select(*cols_to_keep_2)
 
-    return df
+    return ndf
 
 
 def to_list(val):
@@ -141,6 +148,8 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
     default_config_path = Path(table_config_volume) / default_config_file_name
     table_config = ut.get_table_config(table_config_path, platform, table_name, default_config_path)
     default_config = ut.load_json(default_config_path)
+
+
     """
     dp.create_streaming_table(
         name=current_table_path,
@@ -238,6 +247,7 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
     #create_latest_batch_stream(read_path, current_table_path, "/Volumes/oxygen_dev/landing/source/_checkpoints_write/")
 
     if table_config.get("history", None) is not None:
+        history_prev_filters = table_config.get("history").get("history_extra_constraints", None)
         @dp.table(
             name=history_table_path,
             comment=f"Required time series {table_name} data.",
@@ -248,7 +258,7 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
         @dp.expect_or_drop("not_null_snapshot_date", f"{c.SNAPSHOT_COL} IS NOT NULL")
         def f2():
             df = spark.readStream.table(read_path)
-            history_df = history_table_maker(df, table_config["history"]["cols_to_keep"], dates_filter_expr)
+            history_df = history_table_maker(df, table_config["history"]["cols_to_keep"], dates_filter_expr, history_prev_filters)
             return history_df
 
     return None

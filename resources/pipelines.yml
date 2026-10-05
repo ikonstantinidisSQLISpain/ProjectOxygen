@@ -25,7 +25,7 @@ resources:
         platforms.cra: cra
         platforms.project: project
         #
-        history.filter_expression: "day(to_date(snapshot_ts)) IN (1, 15)" # SQL where expression that filter the desired dates for history time series data, use, snapshot_ts as the column, it is later replaced with the right name.
+        history.filter_expression: "snapshot_ts IS NOT NULL" # SQL where expression that filter the desired dates for history time series data, use, snapshot_ts as the column, it is later replaced with the right name.
 
         # Volumes
         ## Formated as:
@@ -111,6 +111,7 @@ resources:
         file.encode.department_bucu: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/bucu_department.csv"
         file.latest_snapshot: ${var.latest_snapshots_file}
         file.encode.site_maps: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/site_maps.csv"
+        file.encode.department_zone_map: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/department_zone.csv"
       libraries:
         - file:
             path: "../src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py"

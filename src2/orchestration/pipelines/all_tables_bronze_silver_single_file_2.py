@@ -448,14 +448,9 @@ def filter_conditions(df, list_of_constraints):
 
     sql_statement = ""
     n_cons = len(list_of_constraints)
-    for i, cons in enumerate(list_of_constraints):
-        operator = " AND "
-        if i==n_cons-1:
-            operator = ""
-
-        sql_statement = sql_statement + cons + operator
-
-    ndf = df.where(sql_statement)
+    ndf = df
+    for con in list_of_constraints:
+        ndf = ndf.where(con)
 
     return ndf
 
@@ -1410,6 +1405,9 @@ def make_department_service_line_zones(sparkSession, department_df, service_line
     bucu_dep_map = spark.read.csv(get_conf(spark, "file.encode.department_bucu"),
                                 header=True,
                                 inferSchema=True)
+    dep_zone_map = spark.read.csv(get_conf(spark, "file.encode.department_zone_map"),
+                                header=True,
+                                inferSchema=True)
 
     ndf = custom_join(
         ndf, zone_names,
@@ -1422,6 +1420,15 @@ def make_department_service_line_zones(sparkSession, department_df, service_line
         ndf, bucu_dep_map,
         "d_sl_z_2", "bucu",
         ndf["department_name"] == bucu_dep_map["practiceName"],
+        "left"
+    )
+
+    ndf = ndf.fillna({"BUCU": "BU"})
+
+    ndf = custom_join(
+        ndf, dep_zone_map,
+        "d_sl_z_3", "dz",
+        ndf["department_name"] == dep_zone_map["department_name"],
         "left"
     )
 
@@ -1439,6 +1446,17 @@ def map_site(sparkSession, site_df):
     return ndf
 
 
+def add_is_active_col(df, end_date_col, is_active_col_name="is_active"):
+    ndf = df.withColumn(
+        is_active_col_name,
+        F.when(
+            F.col(end_date_col).isNull(),
+            F.lit(False)
+        ).otherwise(
+            F.current_date() > F.col(end_date_col)
+        )
+    )
+    return ndf
 
 
 
@@ -1861,9 +1879,16 @@ def last_snapshot_filter(snapshot_df, partition_cols, extra_cols_to_skip=None):
     return newdf
 
 
-def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr):
+def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr, history_extra_constraints):
 
     cols = snapshot_df.columns
+
+    ndf = snapshot_df
+    if history_extra_constraints is not None:
+        if not isinstance(history_extra_constraints, list):
+            raise TypeError("history_extra_constraints must be a list of sql constraints")
+        for con in history_extra_constraints:
+            ndf = ndf.where(con)
 
     if not isinstance(cols_to_keep, list):
         raise ValueError("columns to keep must be a list.")
@@ -1873,9 +1898,9 @@ def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr):
 
     cols_to_keep_2 = list(cols_to_keep)
     cols_to_keep_2.append(SNAPSHOT_COL)
-    df = snapshot_df.where(dates_filter_expr.replace("snapshot_ts", SNAPSHOT_COL)).select(*cols_to_keep_2)
+    ndf = ndf.where(dates_filter_expr.replace("snapshot_ts", SNAPSHOT_COL).replace("latest_snapshot_date", KNOWN_SNAPSHOT)).select(*cols_to_keep_2)
 
-    return df
+    return ndf
 
 
 def to_list(val):
@@ -1930,6 +1955,8 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
     default_config_path = Path(table_config_volume) / default_config_file_name
     table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
     default_config = load_json(default_config_path)
+
+
     """
     dp.create_streaming_table(
         name=current_table_path,
@@ -2027,6 +2054,7 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
     #create_latest_batch_stream(read_path, current_table_path, "/Volumes/oxygen_dev/landing/source/_checkpoints_write/")
 
     if table_config.get("history", None) is not None:
+        history_prev_filters = table_config.get("history").get("history_extra_constraints", None)
         @dp.table(
             name=history_table_path,
             comment=f"Required time series {table_name} data.",
@@ -2037,7 +2065,7 @@ def snapshot_pipe_maker(spark, catalog, platform, table_name):
         @dp.expect_or_drop("not_null_snapshot_date", f"{SNAPSHOT_COL} IS NOT NULL")
         def f2():
             df = spark.readStream.table(read_path)
-            history_df = history_table_maker(df, table_config["history"]["cols_to_keep"], dates_filter_expr)
+            history_df = history_table_maker(df, table_config["history"]["cols_to_keep"], dates_filter_expr, history_prev_filters)
             return history_df
 
     return None
@@ -2051,6 +2079,7 @@ import pyspark.sql as sql
 import pyspark.sql.functions as F
 import pyspark.pipelines as dp
 # import common.utils as ut
+# import common.constants as c
 from pathlib import Path
 
 
@@ -2060,7 +2089,7 @@ from pathlib import Path
 def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
     
     def f():
-        df = spark.readStream.table(read_path)
+        df = sparkSession.readStream.table(read_path)
         return middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 
@@ -2133,6 +2162,9 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
 
             if table_name == "profile":
                 df = add_date_status_prof(df, "lastModifiedDate")
+
+            if table_name in ["certification"]:
+                df = add_is_active_col(df, "endDate")
 
             return df
 
@@ -2222,7 +2254,55 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
                 def f3():
                     df = spark.readStream.table(read_path)
                     return middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
-            
+
+
+    return None
+
+
+def silver_quality_history_profile(spark, catalog):
+    # We add the history profile process
+
+    @dp.table(
+        name=f"{catalog}.silver_whoz.history_profile",
+        comment="History data for profile.",
+        table_properties={
+            "quality": "silver"
+        }
+    )
+    @dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
+    @dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
+    @dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
+    def f4():
+        workers = spark.read.table(f"{catalog}.bronze_perso.history_workers")
+        users = spark.read.table(f"{catalog}.bronze_whoz.history_user")
+        talents = spark.read.table(f"{catalog}.bronze_whoz.history_talent")
+        profile = spark.read.table(f"{catalog}.bronze_whoz.history_profile")
+        collab = spark.read.table(f"{catalog}.bronze_perso.history_collab_status")
+
+        ndf = custom_join(workers, collab, "worker", "collab", workers["id"]==collab["uid"], "left")
+        ndf = custom_join(ndf, users, "join1", "user", ndf["mail"] == users["username"], "left")
+        ndf = custom_join(ndf, talents, "join2", "talent", ndf["user_id"]==talents["userId"], "left")
+        ndf = custom_join(ndf, profile, "join3", "profile", ndf["id"]==profile["talentId"], "left")
+
+        ndf = ndf.where("status != 'Compte Technique'")
+
+        cols_to_drop = [
+            "mail",
+            "status",
+            "collab_snapshot_ts",
+            "user_id",
+            "username",
+            "join2_snapshot_ts",
+            "userId", 
+            "talent_snapshot_ts",
+            "profile_id",
+            "talentId",
+            "snapshot_ts",
+            "join3_id"
+        ]
+        ndf = ndf.drop(*cols_to_drop).withColumnRenamed("worker_snapshot_ts", SNAPSHOT_COL).withColumnRenamed("join1_id", "id")
+
+        return ndf
 
     return None
 
@@ -2475,6 +2555,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     read_table_pro = table_name_builder("cleaned", "profile")
     read_table_tal = table_name_builder("cleaned", "talent")
     read_table_use = table_name_builder("cleaned", "user")
+    read_table_skill = table_name_builder("cleaned", "skill")
 
     target_table_cert = table_name_builder("fact", "certification")
     target_table_acr = table_name_builder("fact", "accreditation")
@@ -2484,6 +2565,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     target_table_pro = table_name_builder("fact", "profile")
     target_table_tal = table_name_builder("", "talent")
     target_table_use = table_name_builder("", "user")
+    target_table_skill = table_name_builder("dim", "skill")
 
     read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
     read_path_cert = f"{catalog}.{read_schema_whoz}.{read_table_cert}"
@@ -2494,6 +2576,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     read_path_pro = f"{catalog}.{read_schema_whoz}.{read_table_pro}"
     read_path_tal = f"{catalog}.{read_schema_whoz}.{read_table_tal}"
     read_path_use = f"{catalog}.{read_schema_whoz}.{read_table_use}"
+    read_path_skill = f"{catalog}.{read_schema_whoz}.{read_table_skill}"
 
     target_path_cert = f"{catalog}.{target_schema}.{target_table_cert}"
     target_path_acr = f"{catalog}.{target_schema}.{target_table_acr}"
@@ -2503,6 +2586,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     target_path_pro = f"{catalog}.{target_schema}.{target_table_pro}"
     target_path_tal = f"{catalog}.{target_schema}.{target_table_tal}"
     target_path_use = f"{catalog}.{target_schema}.{target_table_use}"
+    target_path_skill = f"{catalog}.{target_schema}.{target_table_skill}"
 
     @dp.table(
         name=target_path_cert,
@@ -2551,6 +2635,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    #@dp.expect_or_drop("missing_position", "")
     def f5():
         pos = spark.read.table(read_path_pos)
         return pos
@@ -2562,6 +2647,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("talent_not_missing", "talentId IS NOT NULL")
     def f6():
         pro = spark.read.table(read_path_pro)
         cols_to_drop = [
@@ -2588,10 +2674,20 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_all_or_drop({
+        "missing_aptitude_id": "aptitude_id IS NOT NULL",
+        "missing_concept_id": "concept_id IS NOT NULL"
+    })
     def f7():
         apt = spark.read.table(read_path_apt).withColumn(
             "proficiency",
-            F.coalesce(F.col("proficiency").cast("int"), F.lit(1))
+            F.when(
+                F.col("aptitude_id").isNotNull() | F.col("concept_id").isNotNull(),
+                F.coalesce(F.col("proficiency").cast("int"), F.lit(0))
+            ).otherwise(F.col("proficiency"))
+        ).withColumn(
+            "concept_aptitude_id",
+            F.coalesce(F.col("concept_id"), F.col("aptitude_id"))
         )
         return apt
 
@@ -2602,6 +2698,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("user_not_missing", "userId IS NOT NULL")
     def f8():
         tal = spark.read.table(read_path_tal)
         cols_to_drop = [
@@ -2629,6 +2726,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("username_not_missing", "username IS NOT NULL")
     def f9():
         users = spark.read.table(read_path_use)
         cols_to_drop = [
@@ -2640,6 +2738,29 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
         ]
         users = users.drop(*cols_to_drop)
         return users
+
+    
+    @dp.table(
+        name=target_path_skill,
+        comment="Dimension Skill",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f10():
+        skills = spark.read.table(read_path_skill)
+        cols_to_drop = [
+            "alsoPartOf",
+            "coreSkills",
+            "name",
+            "description",
+            "terms",
+            "hiddenTerms",
+            "wikipediaLink",
+            "depiction"
+        ]
+        skills = skills.drop(*cols_to_drop)
+        return skills
 
     return None
 
@@ -2671,7 +2792,25 @@ def dimension_organization_pipe_maker(sparkSession, catalog):
     def f():
         dep_df = spark.read.table(read_table_path_dep)
         sl_df = spark.read.table(read_table_path_sl)
-        return make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = ndf.drop("associated_service_line", "associated_practice", "service_line_associated_zone", "id", "practiceName", "dz_department_name")
+
+        cols_renames = {
+            "department_associated_zone": "zone_id",
+            "name": "zone_name",
+            "BUCU": "department_bucu",
+            "d_sl_z_3_department_name": "department_name",
+            "zone_name": "og_zone_name"
+        }
+
+        for col, rename in cols_renames.items():
+            ndf = ndf.withColumnRenamed(col, rename)
+
+        ndf = ndf.withColumn(
+            "zone_name",
+            F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
+        )
+        return ndf
 
     return None
 
@@ -2706,7 +2845,19 @@ def dimension_site_pipe_maker(sparkSession, catalog):
     return None
 
 
+def make_gold_history_profile_pipe(sparkSession, catalog):
 
+    @dp.table(
+        name=f"{catalog}.gold_whoz.history_profile",
+        comment="Gold Time series of profile completion and score",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        return sparkSession.read.table(f"{catalog}.silver_whoz.history_profile")
+
+    return None
 
 
 
@@ -2792,7 +2943,7 @@ def make_calendar_df():
         # Día de la semana: 1 = Lunes ... 7 = Domingo
         .withColumn("DayOfWeek", F.dayofweek("Date"))
         .withColumn(
-            "NombreDia",
+            "DayName",
             day_names[F.dayofweek("Date")]
         )
         .withColumn(
@@ -2802,7 +2953,7 @@ def make_calendar_df():
 
         # Mes
         .withColumn(
-            "NombreMes",
+            "MonthName",
             month_names[F.month("Date")]
         )
         .withColumn(
@@ -2844,9 +2995,9 @@ def make_calendar_df():
             "Year",
             "Month",
             "Day",
-            "NombreDia",
+            "DayName",
             "DayShort",
-            "NombreMes",
+            "MonthName",
             "MonthShort",
             "Quarter",
             "QuarterYear",
@@ -2916,8 +3067,10 @@ for platform, tables in PLATFORM_TABLES.items():
         snapshot_pipe_maker(spark, CATALOG, platform, table)
         silver_quality_pipe_maker(spark, CATALOG, platform, table)
 
+silver_quality_history_profile(spark, CATALOG)
 worker_process_pipe_maker_2(spark, CATALOG, False)
 certifications_accreditation_and_workers_pipe(spark, CATALOG)
 dimension_organization_pipe_maker(spark, CATALOG)
 dimension_site_pipe_maker(spark, CATALOG)
+make_gold_history_profile_pipe(spark, CATALOG)
 make_dim_date_pipe_maker(CATALOG)

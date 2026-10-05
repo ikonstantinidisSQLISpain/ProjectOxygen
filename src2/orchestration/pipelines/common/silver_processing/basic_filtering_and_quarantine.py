@@ -4,6 +4,7 @@ import pyspark.sql as sql
 import pyspark.sql.functions as F
 import pyspark.pipelines as dp
 import common.utils as ut
+import common.constants as c
 from pathlib import Path
 
 
@@ -13,7 +14,7 @@ from pathlib import Path
 def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
     
     def f():
-        df = spark.readStream.table(read_path)
+        df = sparkSession.readStream.table(read_path)
         return ut.middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 
@@ -86,6 +87,9 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
 
             if table_name == "profile":
                 df = ut.add_date_status_prof(df, "lastModifiedDate")
+
+            if table_name in ["certification"]:
+                df = ut.add_is_active_col(df, "endDate")
 
             return df
 
@@ -175,6 +179,54 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
                 def f3():
                     df = spark.readStream.table(read_path)
                     return ut.middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
-            
+
+
+    return None
+
+
+def silver_quality_history_profile(spark, catalog):
+    # We add the history profile process
+
+    @dp.table(
+        name=f"{catalog}.silver_whoz.history_profile",
+        comment="History data for profile.",
+        table_properties={
+            "quality": "silver"
+        }
+    )
+    @dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
+    @dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
+    @dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
+    def f4():
+        workers = spark.read.table(f"{catalog}.bronze_perso.history_workers")
+        users = spark.read.table(f"{catalog}.bronze_whoz.history_user")
+        talents = spark.read.table(f"{catalog}.bronze_whoz.history_talent")
+        profile = spark.read.table(f"{catalog}.bronze_whoz.history_profile")
+        collab = spark.read.table(f"{catalog}.bronze_perso.history_collab_status")
+
+        ndf = ut.custom_join(workers, collab, "worker", "collab", workers["id"]==collab["uid"], "left")
+        ndf = ut.custom_join(ndf, users, "join1", "user", ndf["mail"] == users["username"], "left")
+        ndf = ut.custom_join(ndf, talents, "join2", "talent", ndf["user_id"]==talents["userId"], "left")
+        ndf = ut.custom_join(ndf, profile, "join3", "profile", ndf["id"]==profile["talentId"], "left")
+
+        ndf = ndf.where("status != 'Compte Technique'")
+
+        cols_to_drop = [
+            "mail",
+            "status",
+            "collab_snapshot_ts",
+            "user_id",
+            "username",
+            "join2_snapshot_ts",
+            "userId", 
+            "talent_snapshot_ts",
+            "profile_id",
+            "talentId",
+            "snapshot_ts",
+            "join3_id"
+        ]
+        ndf = ndf.drop(*cols_to_drop).withColumnRenamed("worker_snapshot_ts", c.SNAPSHOT_COL).withColumnRenamed("join1_id", "id")
+
+        return ndf
 
     return None

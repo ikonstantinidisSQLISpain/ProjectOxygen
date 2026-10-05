@@ -23,8 +23,10 @@ for platform, tables in PLATFORM_TABLES.items():
         sp.snapshot_pipe_maker(spark, CATALOG, platform, table)
         bfq.silver_quality_pipe_maker(spark, CATALOG, platform, table)
 
+bfq.silver_quality_history_profile(spark, CATALOG)
 daf.worker_process_pipe_maker_2(spark, CATALOG, False)
 daf.certifications_accreditation_and_workers_pipe(spark, CATALOG)
 daf.dimension_organization_pipe_maker(spark, CATALOG)
 daf.dimension_site_pipe_maker(spark, CATALOG)
+daf.make_gold_history_profile_pipe(spark, CATALOG)
 dd.make_dim_date_pipe_maker(CATALOG)

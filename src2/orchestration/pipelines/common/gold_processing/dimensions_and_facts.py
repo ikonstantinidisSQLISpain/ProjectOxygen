@@ -244,6 +244,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     read_table_pro = ut.table_name_builder("cleaned", "profile")
     read_table_tal = ut.table_name_builder("cleaned", "talent")
     read_table_use = ut.table_name_builder("cleaned", "user")
+    read_table_skill = ut.table_name_builder("cleaned", "skill")
 
     target_table_cert = ut.table_name_builder("fact", "certification")
     target_table_acr = ut.table_name_builder("fact", "accreditation")
@@ -253,6 +254,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     target_table_pro = ut.table_name_builder("fact", "profile")
     target_table_tal = ut.table_name_builder("", "talent")
     target_table_use = ut.table_name_builder("", "user")
+    target_table_skill = ut.table_name_builder("dim", "skill")
 
     read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
     read_path_cert = f"{catalog}.{read_schema_whoz}.{read_table_cert}"
@@ -263,6 +265,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     read_path_pro = f"{catalog}.{read_schema_whoz}.{read_table_pro}"
     read_path_tal = f"{catalog}.{read_schema_whoz}.{read_table_tal}"
     read_path_use = f"{catalog}.{read_schema_whoz}.{read_table_use}"
+    read_path_skill = f"{catalog}.{read_schema_whoz}.{read_table_skill}"
 
     target_path_cert = f"{catalog}.{target_schema}.{target_table_cert}"
     target_path_acr = f"{catalog}.{target_schema}.{target_table_acr}"
@@ -272,6 +275,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     target_path_pro = f"{catalog}.{target_schema}.{target_table_pro}"
     target_path_tal = f"{catalog}.{target_schema}.{target_table_tal}"
     target_path_use = f"{catalog}.{target_schema}.{target_table_use}"
+    target_path_skill = f"{catalog}.{target_schema}.{target_table_skill}"
 
     @dp.table(
         name=target_path_cert,
@@ -320,6 +324,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    #@dp.expect_or_drop("missing_position", "")
     def f5():
         pos = spark.read.table(read_path_pos)
         return pos
@@ -331,6 +336,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("talent_not_missing", "talentId IS NOT NULL")
     def f6():
         pro = spark.read.table(read_path_pro)
         cols_to_drop = [
@@ -357,10 +363,20 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_all_or_drop({
+        "missing_aptitude_id": "aptitude_id IS NOT NULL",
+        "missing_concept_id": "concept_id IS NOT NULL"
+    })
     def f7():
         apt = spark.read.table(read_path_apt).withColumn(
             "proficiency",
-            F.coalesce(F.col("proficiency").cast("int"), F.lit(1))
+            F.when(
+                F.col("aptitude_id").isNotNull() | F.col("concept_id").isNotNull(),
+                F.coalesce(F.col("proficiency").cast("int"), F.lit(0))
+            ).otherwise(F.col("proficiency"))
+        ).withColumn(
+            "concept_aptitude_id",
+            F.coalesce(F.col("concept_id"), F.col("aptitude_id"))
         )
         return apt
 
@@ -371,6 +387,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("user_not_missing", "userId IS NOT NULL")
     def f8():
         tal = spark.read.table(read_path_tal)
         cols_to_drop = [
@@ -398,6 +415,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "quality": gold_quality
         }
     )
+    @dp.expect_or_drop("username_not_missing", "username IS NOT NULL")
     def f9():
         users = spark.read.table(read_path_use)
         cols_to_drop = [
@@ -409,6 +427,29 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
         ]
         users = users.drop(*cols_to_drop)
         return users
+
+    
+    @dp.table(
+        name=target_path_skill,
+        comment="Dimension Skill",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f10():
+        skills = spark.read.table(read_path_skill)
+        cols_to_drop = [
+            "alsoPartOf",
+            "coreSkills",
+            "name",
+            "description",
+            "terms",
+            "hiddenTerms",
+            "wikipediaLink",
+            "depiction"
+        ]
+        skills = skills.drop(*cols_to_drop)
+        return skills
 
     return None
 
@@ -440,7 +481,25 @@ def dimension_organization_pipe_maker(sparkSession, catalog):
     def f():
         dep_df = spark.read.table(read_table_path_dep)
         sl_df = spark.read.table(read_table_path_sl)
-        return ut.make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = ut.make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = ndf.drop("associated_service_line", "associated_practice", "service_line_associated_zone", "id", "practiceName", "dz_department_name")
+
+        cols_renames = {
+            "department_associated_zone": "zone_id",
+            "name": "zone_name",
+            "BUCU": "department_bucu",
+            "d_sl_z_3_department_name": "department_name",
+            "zone_name": "og_zone_name"
+        }
+
+        for col, rename in cols_renames.items():
+            ndf = ndf.withColumnRenamed(col, rename)
+
+        ndf = ndf.withColumn(
+            "zone_name",
+            F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
+        )
+        return ndf
 
     return None
 
@@ -475,7 +534,19 @@ def dimension_site_pipe_maker(sparkSession, catalog):
     return None
 
 
+def make_gold_history_profile_pipe(sparkSession, catalog):
 
+    @dp.table(
+        name=f"{catalog}.gold_whoz.history_profile",
+        comment="Gold Time series of profile completion and score",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        return sparkSession.read.table(f"{catalog}.silver_whoz.history_profile")
+
+    return None
 
 
 

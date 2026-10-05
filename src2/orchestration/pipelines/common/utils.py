@@ -429,14 +429,9 @@ def filter_conditions(df, list_of_constraints):
 
     sql_statement = ""
     n_cons = len(list_of_constraints)
-    for i, cons in enumerate(list_of_constraints):
-        operator = " AND "
-        if i==n_cons-1:
-            operator = ""
-
-        sql_statement = sql_statement + cons + operator
-
-    ndf = df.where(sql_statement)
+    ndf = df
+    for con in list_of_constraints:
+        ndf = ndf.where(con)
 
     return ndf
 
@@ -1391,6 +1386,9 @@ def make_department_service_line_zones(sparkSession, department_df, service_line
     bucu_dep_map = spark.read.csv(get_conf(spark, "file.encode.department_bucu"),
                                 header=True,
                                 inferSchema=True)
+    dep_zone_map = spark.read.csv(get_conf(spark, "file.encode.department_zone_map"),
+                                header=True,
+                                inferSchema=True)
 
     ndf = custom_join(
         ndf, zone_names,
@@ -1403,6 +1401,15 @@ def make_department_service_line_zones(sparkSession, department_df, service_line
         ndf, bucu_dep_map,
         "d_sl_z_2", "bucu",
         ndf["department_name"] == bucu_dep_map["practiceName"],
+        "left"
+    )
+
+    ndf = ndf.fillna({"BUCU": "BU"})
+
+    ndf = custom_join(
+        ndf, dep_zone_map,
+        "d_sl_z_3", "dz",
+        ndf["department_name"] == dep_zone_map["department_name"],
         "left"
     )
 
@@ -1420,6 +1427,17 @@ def map_site(sparkSession, site_df):
     return ndf
 
 
+def add_is_active_col(df, end_date_col, is_active_col_name="is_active"):
+    ndf = df.withColumn(
+        is_active_col_name,
+        F.when(
+            F.col(end_date_col).isNull(),
+            F.lit(False)
+        ).otherwise(
+            F.current_date() > F.col(end_date_col)
+        )
+    )
+    return ndf
 
 
 

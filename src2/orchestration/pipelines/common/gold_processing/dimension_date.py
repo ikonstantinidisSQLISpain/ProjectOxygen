@@ -71,7 +71,7 @@ def make_calendar_df():
         # Día de la semana: 1 = Lunes ... 7 = Domingo
         .withColumn("DayOfWeek", F.dayofweek("Date"))
         .withColumn(
-            "NombreDia",
+            "DayName",
             day_names[F.dayofweek("Date")]
         )
         .withColumn(
@@ -81,7 +81,7 @@ def make_calendar_df():
 
         # Mes
         .withColumn(
-            "NombreMes",
+            "MonthName",
             month_names[F.month("Date")]
         )
         .withColumn(
@@ -123,9 +123,9 @@ def make_calendar_df():
             "Year",
             "Month",
             "Day",
-            "NombreDia",
+            "DayName",
             "DayShort",
-            "NombreMes",
+            "MonthName",
             "MonthShort",
             "Quarter",
             "QuarterYear",
