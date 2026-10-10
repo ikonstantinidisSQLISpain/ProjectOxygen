@@ -1,0 +1,20 @@
+description: An accreditation is the official recognition of compliance with certain standards, enabling you to work in certain environments or countries. For example, health and safety accreditations, visas, etc.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__accreditation_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for accreditations.
+    format: json
+    schema: whoz
+    entity: accreditation
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 139
+      max: 144
+      avg: 142
+      units: KB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents an accreditation.

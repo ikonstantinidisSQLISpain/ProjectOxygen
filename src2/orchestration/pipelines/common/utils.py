@@ -536,11 +536,12 @@ def add_bucket_and_status(df, column: str):
              .when(F.col(column) < 0.4, "0.2-0.4")
              .when(F.col(column) < 0.6, "0.4-0.6")
              .when(F.col(column) < 0.8, "0.6-0.8")
-             .otherwise("0.8-1")
+             .when(F.col(column) <= 1, "0.8-1")
+             .otherwise(None)
         )
         .withColumn(
             f"{column}_Status",
-            F.when(F.col(column) > 0.8, "Completed")
+            F.when(F.col(column) >= 0.8, "Completed")
              .otherwise("Not completed")
         )
     )
@@ -620,97 +621,97 @@ class ProfileScoreNamespace():
                 "function": self.positions_have_assignment,
                 "name": "positions_have_assignment",
                 "columns": ["positions"], # Table column names required for this function
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c2": {
                 "function": self.positions_have_skills,
                 "name": "positions_have_skills",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c3": {
                 "function": self.assignments_have_skills,
                 "name": "assignments_have_skills",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c4": {
                 "function": self.short_project_context,
                 "name": "short_project_context",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c5": {
                 "function": self.favourite_skills,
                 "name": "favourite_skills",
                 "columns": ["aptitudes"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c6": {
                 "function": self.profile_updated,
                 "name": "profile_updated",
                 "columns": ["lastModifiedDate", c.SNAPSHOT_COL],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c7": {
                 "function": self.position_fields_filled,
                 "name": "position_fields_filled",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c8": {
                 "function": self.assignment_fields_filled,
                 "name": "assignment_fields_filled",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c9": {
                 "function": self.no_forbidden_words,
                 "name": "no_forbidden_words",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c10": {
                 "function": self.has_activity_area,
                 "name": "has_activity_area",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c11": {
                 "function": self.no_free_text_skills,
                 "name": "no_free_text_skills",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c12": {
                 "function": self.proficiency_on_twenty_pct,
                 "name": "proficiency_on_twenty_pct",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c13": {
                 "function": self.all_skills_categorized,
                 "name": "all_skills_categorized",
                 "columns": ["aptitudes"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c14": {
                 "function": self.education_field_filled,
                 "name": "education_field_filled",
                 "columns": ["educations"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c15": {
                 "function": self.bio_word_count,
                 "name": "bio_word_count",
                 "columns": ["headline"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c16": {
                 "function": self.skills_linked_to_positions,
                 "name": "skills_linked_to_positions",
                 "columns": ["aptitudes","positions"],
-                "weight": 8
+                "weight": 5.7 #8
             },
         }
 
@@ -1216,7 +1217,8 @@ class ProfileScoreNamespace():
             *[x for k,v in top_priority_multiplier.items() for x in (F.lit(k), F.lit(v))]
         )
 
-        score = F.round(raw_score*top_priority_multiplier_map[top_priority_score])
+        #score = F.round(raw_score*top_priority_multiplier_map[top_priority_score])
+        score = F.round(weighted_score)
 
         ndf = ndf.withColumn(
             "profileScore",
@@ -1424,6 +1426,8 @@ def map_site(sparkSession, site_df):
 
     ndf = custom_join(site_df, site_maps, "site", "site_map", site_df["name"]==site_maps["site_name"], "left")
 
+    ndf = ndf.withColumn("id", F.col("id").cast("int"))
+    ndf = ndf.withColumn("active", F.col("active").cast("int"))
     return ndf
 
 
@@ -1440,8 +1444,47 @@ def add_is_active_col(df, end_date_col, is_active_col_name="is_active"):
     return ndf
 
 
+def trim_str_cols(df):
+    for field in df.schema:
+        if isinstance(field.dataType, ty.StringType):
+            df = df.withColumn(field.name, F.trim(F.col(field.name)))
+    return df
 
 
+def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
+
+    pp_df = profile_positions_df.where("is_mission = TRUE")
+
+    last_pos_date = pp_df.groupBy("profile_id").agg(F.max("startDate").alias("last_date")).withColumnRenamed("profile_id", "pp_df")
+    pp_df = pp_df.join(last_pos_date, pp_df["profile_id"] == last_pos_date["pp_df"], "left").drop("pp_df")
+
+
+    pp_df = pp_df.where("startDate = last_date").drop("last_date")
+
+    pp_count = pp_df.groupBy("profile_id").count().withColumnRenamed("profile_id", "c_profile_id")
+    pp_df = pp_df.join(pp_count, pp_df["profile_id"] == pp_count["c_profile_id"], "left").drop("c_profile_id")
+
+    g1 = pp_df.where("count = 1")
+    g2 = pp_df.where("count > 1")
+
+    g3 = g2.where("endDate IS NULL")
+    g4 = g2.where("endDate IS NOT NULL").join(g3.select("profile_id"), on="profile_id", how="left_anti")
+
+    last_end_date = g4.groupBy("profile_id").agg(F.max("endDate").alias("last_end_date")).withColumnRenamed("profile_id", "l_profile_id")
+    g4 = g4.join(last_end_date, g4["profile_id"]==last_end_date["l_profile_id"], "left").drop("l_profile_id")
+    g4 = g4.where("endDate = last_end_date").drop("last_end_date")
+
+    final = g1.unionByName(g3).unionByName(g4)
+    
+    pp_df = final.select("profile_id", "title", "startDate")
+
+
+    ndf = custom_join(profile_df, pp_df, "profile", "pp", profile_df["id"] == pp_df["profile_id"], "left")
+    ndf = ndf.drop("profile_id")
+    ndf = ndf.withColumnRenamed("startDate", "last_mission_start_date")
+    ndf = ndf.withColumnRenamed("title", "last_mission_title")
+
+    return ndf
 
 
 

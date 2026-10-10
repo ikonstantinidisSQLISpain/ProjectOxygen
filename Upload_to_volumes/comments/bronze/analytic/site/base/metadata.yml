@@ -1,0 +1,8 @@
+description: Top level keys of the JSON have been transformed to columns, the data remains untouched.
+grain: 'Each row represents a site at a given snapshot date.'
+source:
+  origin: ''
+  data:
+    description: ''
+    format: Table
+  update_frequency: daily

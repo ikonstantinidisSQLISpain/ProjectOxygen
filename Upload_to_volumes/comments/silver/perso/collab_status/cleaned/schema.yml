@@ -1,0 +1,134 @@
+year:
+  description: 'Year of the snapshot record.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+month:
+  description: 'Month of the snapshot record.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+uid:
+  description: 'Unique identifier of the worker.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+matricule:
+  description: 'Employee registration number or personnel identifier.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+bu_id:
+  description: 'Identifier of the business unit associated with the worker.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+site_id:
+  description: 'Identifier of the site associated with the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+status:
+  description: 'Code representing the worker collaboration status at the snapshot date.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+standard_cost_category:
+  description: 'Category used to classify the worker standard cost.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+standard_cost:
+  description: 'Standard cost assigned to the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+activity:
+  description: 'Activity or role associated with the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+service_line_id:
+  description: 'Identifier of the service line associated with the worker.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+department_id:
+  description: 'Identifier of the department associated with the worker.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+status_name:
+  description: 'Descriptive name of the worker collaboration status.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

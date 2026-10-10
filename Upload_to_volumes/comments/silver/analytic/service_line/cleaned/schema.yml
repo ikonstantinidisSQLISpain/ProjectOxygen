@@ -1,0 +1,81 @@
+id:
+  description: 'Unique identifier of the service line.'
+  type: int
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+code:
+  description: 'Code used to identify the service line.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+active:
+  description: 'Indicates whether the service line is active.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name:
+  description: 'Name of the service line.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+short_name:
+  description: 'Short name or abbreviation of the service line.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+technical_name:
+  description: 'Technical or system-defined name of the service line.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+associated_zone:
+  description: 'Zone IDs associated with the service line.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+associated_practice:
+  description: 'Practice IDs associated with the service line.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.

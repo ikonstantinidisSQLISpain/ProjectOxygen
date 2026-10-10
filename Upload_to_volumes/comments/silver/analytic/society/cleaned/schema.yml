@@ -1,0 +1,29 @@
+id:
+  description: 'Unique identifier of the society.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+active:
+  description: 'Indicates whether the society is active.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name:
+  description: 'Name of the society or legal entity.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

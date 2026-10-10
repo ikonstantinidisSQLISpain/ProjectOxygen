@@ -1,0 +1,9 @@
+id:
+  description: Identifier
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1

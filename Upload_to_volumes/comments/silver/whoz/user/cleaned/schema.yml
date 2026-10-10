@@ -1,0 +1,177 @@
+id:
+  description: 'Unique identifier of the user.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+idpId:
+  description: 'Identifier of the user in the identity provider.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+enabled:
+  description: 'Indicates whether the user account is enabled.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+username:
+  description: 'Username used by the user in the platform.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+workspaceRoles:
+  description: 'Workspace roles assigned to the user.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+federationRoles:
+  description: 'Federation-level roles assigned to the user.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+agenticStudioRoles:
+  description: 'Agentic Studio roles assigned to the user.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+connectedTalents:
+  description: 'Talents associated with the user account.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+createdBy:
+  description: 'Identifier of the user who created the user account.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+createdDate:
+  description: 'Date and time when the user account was created.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastConnectionDate:
+  description: 'Date and time of the user last connection to the platform.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastModifiedBy:
+  description: 'Identifier of the user who last modified the user account.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+lastModifiedDate:
+  description: 'Date and time when the user account was last modified.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+removed:
+  description: 'Indicates whether the user account has been removed.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+language:
+  description: 'Preferred language of the user.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+theme:
+  description: 'User interface theme selected by the user.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+keyboardShortcuts:
+  description: 'Keyboard shortcut preferences configured by the user.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True

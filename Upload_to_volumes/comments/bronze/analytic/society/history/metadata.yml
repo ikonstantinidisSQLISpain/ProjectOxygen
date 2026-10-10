@@ -1,0 +1,8 @@
+description: The data from base level remains the same, however some columns might have been dropped, while retaining the historical data.
+grain: ''
+source:
+  origin: ''
+  data:
+    description: ''
+    format: Table
+  update_frequency: daily

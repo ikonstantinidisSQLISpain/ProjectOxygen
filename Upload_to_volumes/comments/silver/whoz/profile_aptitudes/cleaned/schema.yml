@@ -1,0 +1,82 @@
+profile_id:
+  description: 'Identifier of the profile associated with the aptitude.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+aptitude_id:
+  description: 'Identifier of the aptitude associated with the profile.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+concept_id:
+  description: 'Identifier of the concept associated with the aptitude.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+name:
+  description: 'Name of the aptitude.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+type:
+  description: 'Type or category of the aptitude.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+proficiency:
+  description: 'Proficiency level associated with the aptitude.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+visibility:
+  description: 'Visibility level of the aptitude within the profile.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+cumulativeExperience:
+  description: 'Cumulative experience associated with the aptitude.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

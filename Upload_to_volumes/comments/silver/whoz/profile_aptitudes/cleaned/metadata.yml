@@ -1,0 +1,8 @@
+description: The data from the latest snapshot has been processed, cleaned, filtered and transformed. The profile aptitudes have been exploded into a middle table.
+grain: 'Each row represents the aptitude of a profile.'
+source:
+  origin: ''
+  data:
+    description: ''
+    format: Table
+  update_frequency: daily

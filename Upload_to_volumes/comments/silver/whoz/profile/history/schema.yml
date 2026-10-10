@@ -1,0 +1,79 @@
+id:
+  description: 'Unique identifier of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+snapshot_ts:
+  description: 'Timestamp of the snapshot from which the profile metrics were calculated.'
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+uid:
+  description: 'Unique identifier of the associated Whoz user or talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+completionRate:
+  description: 'Profile completion rate calculated from profile completeness criteria.'
+  type: float
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+completionRate_Bucket:
+  description: 'Completion rate range bucket (0-20%, 20-40%, 40-60%, 60-80%, or 80-100%).'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+completionRate_Status:
+  description: 'Completion status derived from the completion rate. Profiles with a completion rate greater than or equal to 80% are classified as Completed.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+profileScore:
+  description: 'Profile quality score calculated from profile validation criteria.'
+  type: double
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+profileScore_Status:
+  description: 'Profile status derived from the profile score according to profile scoring rules.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

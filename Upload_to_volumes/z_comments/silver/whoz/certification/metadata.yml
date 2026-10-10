@@ -1,0 +1,20 @@
+description: A certification is proof in the form of a document (certificate), provided by an independent body, showing that a talent can perform certain tasks to a required standard. In contrast to educations and positions, certifications are not embedded in the profile itself. They are handled with their own set of endpoints.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__certification_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for certifications.
+    format: json
+    schema: whoz
+    entity: certification
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 6.21
+      max: 6.49
+      avg: 6.4
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a certification.

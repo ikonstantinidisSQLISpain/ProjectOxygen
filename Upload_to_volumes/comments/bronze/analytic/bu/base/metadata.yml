@@ -1,0 +1,8 @@
+description: Top level keys of the JSON have been transformed to columns, the data remains untouched.
+grain: 'One row per Unit (BU or CU) and Snapshot date.'
+source:
+  origin: 'Raw BU'
+  data:
+    description: ''
+    format: Table
+  update_frequency: daily

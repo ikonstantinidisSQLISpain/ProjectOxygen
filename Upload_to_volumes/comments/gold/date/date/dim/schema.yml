@@ -1,0 +1,129 @@
+Date:
+  description: 'Calendar date.'
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+Year:
+  description: 'Year component of the calendar date.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+Month:
+  description: 'Month number of the calendar date.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+Day:
+  description: 'Day number of the calendar date.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+DayName:
+  description: 'Full name of the day of the week.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+DayShort:
+  description: 'Abbreviated name of the day of the week.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+MonthName:
+  description: 'Full name of the month.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+MonthShort:
+  description: 'Abbreviated name of the month.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+Quarter:
+  description: 'Quarter of the year corresponding to the calendar date.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+QuarterYear:
+  description: 'Year and quarter representation of the calendar date.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+WeekNumber:
+  description: 'Week number of the year corresponding to the calendar date.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+IsCurrentMonth:
+  description: 'Indicates whether the calendar date belongs to the current month.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+IsCurrentYear:
+  description: 'Indicates whether the calendar date belongs to the current year.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

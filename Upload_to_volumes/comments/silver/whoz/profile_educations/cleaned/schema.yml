@@ -1,0 +1,91 @@
+profile_id:
+  description: 'Identifier of the profile associated with the education record.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+education_id:
+  description: 'Unique identifier of the education record.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+address_city:
+  description: 'City where the educational institution is located.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+address_countryCode:
+  description: 'Country code of the educational institution location.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+description:
+  description: 'Description of the education record.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+endDate:
+  description: 'End date of the education period.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+isSecondary:
+  description: 'Indicates whether this education record is marked as secondary.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+school:
+  description: 'Name of the educational institution.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+startDate:
+  description: 'Start date of the education period.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

@@ -1,0 +1,446 @@
+_source_file:
+  description: source file path.
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_name:
+  description: source file name.
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_size:
+  description: source file size.
+  type: bigint
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_modified_at:
+  description: last modification time of the soource file.
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+snapshot_ts:
+  description: snapshot date of the file
+  type: date
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 1
+file_name_error:
+  description: error in the source file name, if present
+  type: string
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+ingest_ts:
+  description: timestamp when record was ingested
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+
+remaining_payload:
+  description: captured data that is not included in the used schema.
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: true
+
+known_latest_snapshot:
+  description: 'Latest snapshot date.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+id:
+  description: 'Unique identifier of the worker.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+active:
+  description: 'Indicates whether the worker is currently active.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+matricule:
+  description: 'Employee registration number or personnel identifier.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+mail:
+  description: 'Corporate email address of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+first_name:
+  description: 'First name of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+last_name:
+  description: 'Last name of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+display_name:
+  description: 'Full display name of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+gender:
+  description: 'Gender of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+nationality:
+  description: 'Nationality of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+postal_code:
+  description: 'Postal code of the worker''s primary location.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+city:
+  description: 'City of the worker''s primary location.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+business_phone:
+  description: 'Business phone number of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+start_date:
+  description: 'Date when the worker joined the organization.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+seniority_date:
+  description: 'Date used to calculate the worker''s seniority.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+job_title:
+  description: 'Job title of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+productivity_coefficient:
+  description: 'Productivity coefficient associated with the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+fulltime_or_parttime:
+  description: 'Indicates whether the worker is employed full-time or part-time.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+gcm:
+  description: "Information about the worker's GCM classification."
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+std_cost:
+  description: 'Standard cost information associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+tariff:
+  description: 'Tariff or billing rate information associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+skill:
+  description: "Information about the worker's skills."
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+position:
+  description: "Information about the worker's position."
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+employee_category:
+  description: "Information about the worker's employee category."
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+bucu:
+  description: 'Information about the BUCU associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+entity:
+  description: 'Information about the business entity associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+society:
+  description: 'Information about the legal entity or company associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+site:
+  description: 'Information about the site or location associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+tl_rh:
+  description: 'Information about the HR contact associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+direct_manager:
+  description: "Information about the worker's direct manager."
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+service_line:
+  description: 'Information about the service line associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+department:
+  description: 'Information about the department associated with the worker.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+leave_date:
+  description: 'Date when the worker left the organization.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+type_of_temporary_worker:
+  description: 'Type of temporary worker assignment.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+parttime_rate:
+  description: 'Part-time employment rate expressed as a percentage of full-time capacity.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

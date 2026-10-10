@@ -1,0 +1,8 @@
+description: 'Original data for Departments'
+grain: JSON row
+source:
+  origin: Sharepoint files from SQLi-Internal/app-reports.
+  data:
+    description: ''
+    format: JSON
+  update_frequency: daily

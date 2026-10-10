@@ -1,0 +1,29 @@
+id:
+  description: 'Unique identifier of the Whoz user.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+username:
+  description: 'Username used by the user in the Whoz platform.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+snapshot_ts:
+  description: 'Timestamp of the snapshot from which the user record was extracted.'
+  type: date
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

@@ -1,0 +1,294 @@
+_source_file:
+  description: source file path.
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_name:
+  description: source file name.
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_size:
+  description: source file size.
+  type: bigint
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+_source_file_modified_at:
+  description: last modification time of the soource file.
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+file_name_error:
+  description: error in the source file name, if present
+  type: string
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+ingest_ts:
+  description: timestamp when record was ingested
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 1
+remaining_payload:
+  description: captured data that is not included in the used schema.
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: true
+id:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 1.000
+
+idpId:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0.429
+    unique_percen: 0.571
+    referential_integrity: "Should be granted"
+
+enabled:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: bool
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.001
+    possible_values:
+      - true
+      - false
+      - null
+
+username:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 1.000
+
+formerUsernames:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+workspaceRoles:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list|dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+federationRoles:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list|dict
+  nullable: false
+  is_pk: false
+  is_fk: false
+  nested_structures: true
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+agenticStudioRoles:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+connectedTalents:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+
+createdBy:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.004
+
+createdDate:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 1.000
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+lastConnectionDate:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.432
+    unique_percen: 0.569
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+lastModifiedBy:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.234
+    unique_percen: 0.249
+
+lastModifiedDate:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: date
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.987
+    date_format:
+      template: "%Y-%m-%dT%H:%M:%S.%fZ"
+      mapping:
+        year: "%Y"
+        month: "%m"
+        day: "%d"
+        hour: "%H"
+        minute: "%M"
+        seconds: "%S"
+        microseconds: "%f"
+        timezone: "Z"
+
+removed:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: bool
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    possible_values:
+      - false
+      - null
+
+language:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.001
+    possible_values:
+      - fr-FR
+      - en-GB
+      - en-US
+      - null
+
+theme:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: str
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000
+    possible_values:
+      - LIGHT
+      - null
+
+keyboardShortcuts:
+  description: https://developer.whoz.com/docs/whoz-api/7811a6744e213-user  (Link is provided because definition may change over time)
+  type: list
+  nullable: true
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0.000
+    unique_percen: 0.000

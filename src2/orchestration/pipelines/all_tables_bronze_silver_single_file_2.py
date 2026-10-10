@@ -555,11 +555,12 @@ def add_bucket_and_status(df, column: str):
              .when(F.col(column) < 0.4, "0.2-0.4")
              .when(F.col(column) < 0.6, "0.4-0.6")
              .when(F.col(column) < 0.8, "0.6-0.8")
-             .otherwise("0.8-1")
+             .when(F.col(column) <= 1, "0.8-1")
+             .otherwise(None)
         )
         .withColumn(
             f"{column}_Status",
-            F.when(F.col(column) > 0.8, "Completed")
+            F.when(F.col(column) >= 0.8, "Completed")
              .otherwise("Not completed")
         )
     )
@@ -639,97 +640,97 @@ class ProfileScoreNamespace():
                 "function": self.positions_have_assignment,
                 "name": "positions_have_assignment",
                 "columns": ["positions"], # Table column names required for this function
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c2": {
                 "function": self.positions_have_skills,
                 "name": "positions_have_skills",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c3": {
                 "function": self.assignments_have_skills,
                 "name": "assignments_have_skills",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c4": {
                 "function": self.short_project_context,
                 "name": "short_project_context",
                 "columns": ["positions"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c5": {
                 "function": self.favourite_skills,
                 "name": "favourite_skills",
                 "columns": ["aptitudes"],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c6": {
                 "function": self.profile_updated,
                 "name": "profile_updated",
                 "columns": ["lastModifiedDate", SNAPSHOT_COL],
-                "weight": 15
+                "weight": 10.7 #15
             },
             "c7": {
                 "function": self.position_fields_filled,
                 "name": "position_fields_filled",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c8": {
                 "function": self.assignment_fields_filled,
                 "name": "assignment_fields_filled",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c9": {
                 "function": self.no_forbidden_words,
                 "name": "no_forbidden_words",
                 "columns": ["positions"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c10": {
                 "function": self.has_activity_area,
                 "name": "has_activity_area",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c11": {
                 "function": self.no_free_text_skills,
                 "name": "no_free_text_skills",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c12": {
                 "function": self.proficiency_on_twenty_pct,
                 "name": "proficiency_on_twenty_pct",
                 "columns": ["aptitudes"],
-                "weight": 8
+                "weight": 5.7 #8
             },
             "c13": {
                 "function": self.all_skills_categorized,
                 "name": "all_skills_categorized",
                 "columns": ["aptitudes"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c14": {
                 "function": self.education_field_filled,
                 "name": "education_field_filled",
                 "columns": ["educations"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c15": {
                 "function": self.bio_word_count,
                 "name": "bio_word_count",
                 "columns": ["headline"],
-                "weight": 3
+                "weight": 2.1 #3
             },
             "c16": {
                 "function": self.skills_linked_to_positions,
                 "name": "skills_linked_to_positions",
                 "columns": ["aptitudes","positions"],
-                "weight": 8
+                "weight": 5.7 #8
             },
         }
 
@@ -1235,7 +1236,8 @@ class ProfileScoreNamespace():
             *[x for k,v in top_priority_multiplier.items() for x in (F.lit(k), F.lit(v))]
         )
 
-        score = F.round(raw_score*top_priority_multiplier_map[top_priority_score])
+        #score = F.round(raw_score*top_priority_multiplier_map[top_priority_score])
+        score = F.round(weighted_score)
 
         ndf = ndf.withColumn(
             "profileScore",
@@ -1443,6 +1445,8 @@ def map_site(sparkSession, site_df):
 
     ndf = custom_join(site_df, site_maps, "site", "site_map", site_df["name"]==site_maps["site_name"], "left")
 
+    ndf = ndf.withColumn("id", F.col("id").cast("int"))
+    ndf = ndf.withColumn("active", F.col("active").cast("int"))
     return ndf
 
 
@@ -1459,8 +1463,47 @@ def add_is_active_col(df, end_date_col, is_active_col_name="is_active"):
     return ndf
 
 
+def trim_str_cols(df):
+    for field in df.schema:
+        if isinstance(field.dataType, ty.StringType):
+            df = df.withColumn(field.name, F.trim(F.col(field.name)))
+    return df
 
 
+def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
+
+    pp_df = profile_positions_df.where("is_mission = TRUE")
+
+    last_pos_date = pp_df.groupBy("profile_id").agg(F.max("startDate").alias("last_date")).withColumnRenamed("profile_id", "pp_df")
+    pp_df = pp_df.join(last_pos_date, pp_df["profile_id"] == last_pos_date["pp_df"], "left").drop("pp_df")
+
+
+    pp_df = pp_df.where("startDate = last_date").drop("last_date")
+
+    pp_count = pp_df.groupBy("profile_id").count().withColumnRenamed("profile_id", "c_profile_id")
+    pp_df = pp_df.join(pp_count, pp_df["profile_id"] == pp_count["c_profile_id"], "left").drop("c_profile_id")
+
+    g1 = pp_df.where("count = 1")
+    g2 = pp_df.where("count > 1")
+
+    g3 = g2.where("endDate IS NULL")
+    g4 = g2.where("endDate IS NOT NULL").join(g3.select("profile_id"), on="profile_id", how="left_anti")
+
+    last_end_date = g4.groupBy("profile_id").agg(F.max("endDate").alias("last_end_date")).withColumnRenamed("profile_id", "l_profile_id")
+    g4 = g4.join(last_end_date, g4["profile_id"]==last_end_date["l_profile_id"], "left").drop("l_profile_id")
+    g4 = g4.where("endDate = last_end_date").drop("last_end_date")
+
+    final = g1.unionByName(g3).unionByName(g4)
+    
+    pp_df = final.select("profile_id", "title", "startDate")
+
+
+    ndf = custom_join(profile_df, pp_df, "profile", "pp", profile_df["id"] == pp_df["profile_id"], "left")
+    ndf = ndf.drop("profile_id")
+    ndf = ndf.withColumnRenamed("startDate", "last_mission_start_date")
+    ndf = ndf.withColumnRenamed("title", "last_mission_title")
+
+    return ndf
 
 
 
@@ -1615,6 +1658,7 @@ def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False)
         return RawReader.raw_json_reader(spark, read_volume, files_glob_regex, streaming)
 
 
+    """
     # We add the error derivation to quarantine table
     quarantine_schema = get_quarantine_schema(spark)
     quarantine_table = get_quarantine_table(spark, "files")
@@ -1631,7 +1675,8 @@ def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False)
             "file_name_error"
         )
         return quarantine_df
-
+    """
+    
     return None
 
 
@@ -1659,8 +1704,8 @@ import pyspark.sql.types as ty
 from pathlib import Path
 # This file has all the functions neccessary to translate a payload variant column from raw table into a bronze table.
 
-import cloudpickle
-cloudpickle.register_pickle_by_value(sys.modules[__name__])
+#import cloudpickle
+#cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 
 def payload_subset_expr_string_maker(variant_col_name, cols_to_select):
@@ -2093,6 +2138,87 @@ def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names
         return middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 
+
+def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table_config, add_snapshot_col=False):
+
+    middle_table = middle_table_config
+    if middle_table is not None:
+        pks = middle_table.get("pks", None)
+        cols_to_extract = middle_table.get("cols_to_extract", None)
+        new_pk_names = middle_table.get("pk_new_names", None)
+        extracted_cols_names = middle_table.get("extracted_cols_names", None)
+        variant_paths = middle_table.get("variant_paths", None)
+
+
+        if None in [pks, cols_to_extract, new_pk_names, extracted_cols_names]:
+            raise ValueError("Missing any of these keys: pks, col_to_extract, pk_new_names, extracted_col_name, extraction_name")
+
+        if add_snapshot_col:
+            pks.append(SNAPSHOT_COL)
+        if isinstance(cols_to_extract, list):
+            extraction_names = middle_table.get("extraction_names", None)
+            if extraction_names is None:
+                raise ValueError("extraction_names is missing")
+            
+            if (not isinstance(extracted_cols_names, list) 
+                or not (isinstance(variant_paths, list) or variant_paths is None)
+                or not isinstance(extraction_names, list)
+                ):
+                raise TypeError("If there are multiple cols_to_extract, extracted_cols_names, varian_paths (if provided) and extraction_name must be a list, each one referring to their respective column_to_extract")
+            c1 = len(cols_to_extract) != len(extracted_cols_names)
+            c2 = len(cols_to_extract) != len(extraction_names)
+            c3 = False
+            if variant_paths is not None:
+                c3 = len(cols_to_extract) != len(variant_paths)
+
+            if (c1 or c2 or c3):
+                raise ValueError("Len of cols_to_extract, extracted_cols_names and variant_paths (if provided) must match if cols_to_extract is a list.")
+            
+            for i, col_to_extract in enumerate(cols_to_extract):
+                extraction_name = extraction_names[i]
+                middle_table_name = f"{table_name}_{extraction_name}"
+                middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+                if variant_paths is None:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
+                    )
+                else:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
+                    )
+        else:
+            extraction_name = middle_table.get("extraction_names", None)
+            middle_table_name = f"{table_name}_{extraction_name}"
+            middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+
+            @dp.table(
+                name=middle_table_path,
+                comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                table_properties={
+                    "quality": target_quality
+                }
+            )
+            def f3():
+                df = spark.readStream.table(read_path)
+                return middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
+    return None
+
+
+
+
+
 def silver_quality_pipe_maker(spark, catalog, platform, table_name):
     # Como en la fase silver evitamos agregaciones, extraemos la tabla que contiene la relación, accreditación, profile, skill
 
@@ -2147,6 +2273,8 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
             if cols_to_drop is not None:
                 df = remove_cols(df, cols_to_drop, drop_metadata)
 
+            df = trim_str_cols(df)
+
             if table_name == "talent":
                 df = add_seniority(df, "yearsOfExperience")
                 df = add_date_status(df, "lastConnectionDate")
@@ -2184,76 +2312,7 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
                 return make_quarantine_table(df, quarantine_queries, pk_cols, read_path)
 
 
-        if middle_table is not None:
-
-            pks = middle_table.get("pks", None)
-            cols_to_extract = middle_table.get("cols_to_extract", None)
-            new_pk_names = middle_table.get("pk_new_names", None)
-            extracted_cols_names = middle_table.get("extracted_cols_names", None)
-            variant_paths = middle_table.get("variant_paths", None)
-
-
-            if None in [pks, cols_to_extract, new_pk_names, extracted_cols_names]:
-                raise ValueError("Missing any of these keys: pks, col_to_extract, pk_new_names, extracted_col_name, extraction_name")
-
-            if isinstance(cols_to_extract, list):
-                extraction_names = middle_table.get("extraction_names", None)
-                if extraction_names is None:
-                    raise ValueError("extraction_names is missing")
-                
-                if (not isinstance(extracted_cols_names, list) 
-                    or not (isinstance(variant_paths, list) or variant_paths is None)
-                    or not isinstance(extraction_names, list)
-                    ):
-                    raise TypeError("If there are multiple cols_to_extract, extracted_cols_names, varian_paths (if provided) and extraction_name must be a list, each one referring to their respective column_to_extract")
-                c1 = len(cols_to_extract) != len(extracted_cols_names)
-                c2 = len(cols_to_extract) != len(extraction_names)
-                c3 = False
-                if variant_paths is not None:
-                    c3 = len(cols_to_extract) != len(variant_paths)
-
-                if (c1 or c2 or c3):
-                    raise ValueError("Len of cols_to_extract, extracted_cols_names and variant_paths (if provided) must match if cols_to_extract is a list.")
-                
-                for i, col_to_extract in enumerate(cols_to_extract):
-                    extraction_name = extraction_names[i]
-                    middle_table_name = f"{table_name}_{extraction_name}"
-                    middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
-                    if variant_paths is None:
-                        dp.table(
-                            name=middle_table_path,
-                            comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                            table_properties={
-                                "quality": target_quality
-                            }
-                        )(
-                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
-                        )
-                    else:
-                        dp.table(
-                            name=middle_table_path,
-                            comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                            table_properties={
-                                "quality": target_quality
-                            }
-                        )(
-                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
-                        )
-            else:
-                extraction_name = middle_table.get("extraction_names", None)
-                middle_table_name = f"{table_name}_{extraction_name}"
-                middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
-
-                @dp.table(
-                    name=middle_table_path,
-                    comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                    table_properties={
-                        "quality": target_quality
-                    }
-                )
-                def f3():
-                    df = spark.readStream.table(read_path)
-                    return middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
+        middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table)
 
 
     return None
@@ -2269,9 +2328,9 @@ def silver_quality_history_profile(spark, catalog):
             "quality": "silver"
         }
     )
-    @dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
-    @dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
-    @dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
+    #@dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
+    #@dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
+    #@dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
     def f4():
         workers = spark.read.table(f"{catalog}.bronze_perso.history_workers")
         users = spark.read.table(f"{catalog}.bronze_whoz.history_user")
@@ -2279,12 +2338,11 @@ def silver_quality_history_profile(spark, catalog):
         profile = spark.read.table(f"{catalog}.bronze_whoz.history_profile")
         collab = spark.read.table(f"{catalog}.bronze_perso.history_collab_status")
 
-        ndf = custom_join(workers, collab, "worker", "collab", workers["id"]==collab["uid"], "left")
-        ndf = custom_join(ndf, users, "join1", "user", ndf["mail"] == users["username"], "left")
-        ndf = custom_join(ndf, talents, "join2", "talent", ndf["user_id"]==talents["userId"], "left")
-        ndf = custom_join(ndf, profile, "join3", "profile", ndf["id"]==profile["talentId"], "left")
-
-        ndf = ndf.where("status != 'Compte Technique'")
+        ndf = custom_join(workers, collab, "worker", "collab", 
+                             ((workers["id"]==collab["uid"]) & (workers["snapshot_ts"]==collab["snapshot_ts"])), "inner")
+        ndf = custom_join(ndf, users, "join1", "user", ((ndf["mail"] == users["username"]) & (ndf["worker_snapshot_ts"] == users["snapshot_ts"])), "left")
+        ndf = custom_join(ndf, talents, "join2", "talent", ((ndf["user_id"] == talents["userId"]) & (ndf["worker_snapshot_ts"] == talents["snapshot_ts"])), "left")
+        ndf = custom_join(ndf, profile, "join3", "profile", ((ndf["id"] == profile["talentId"]) & (ndf["worker_snapshot_ts"] == profile["snapshot_ts"])), "left")
 
         cols_to_drop = [
             "mail",
@@ -2440,13 +2498,14 @@ def worker_process_pipe_maker(sparkSession, catalog, enable_quarantine: bool = F
 
 def worker_process_2(worker, collab_status, leave):
 
-    ndf = custom_join(worker, collab_status, "worker", "collab", worker["id"] == collab_status["uid"], "left")
+    ndf = custom_join(worker, collab_status, "worker", "collab", worker["id"] == collab_status["uid"], "inner")
     ndf = custom_join(
         ndf, leave,
         "worker_2", "leave",
         ndf["id"] == leave["uid"],
         "left"
     )
+    ndf = ndf.where("status_name != 'Compte Technique'")
 
     cols_to_drop = [
         "skill",
@@ -2650,6 +2709,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     @dp.expect_or_drop("talent_not_missing", "talentId IS NOT NULL")
     def f6():
         pro = spark.read.table(read_path_pro)
+        pro_pos = spark.read.table(read_path_pos)
         cols_to_drop = [
             "completionDetails",
             "customFields",
@@ -2664,6 +2724,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "resume"
         ]
         pro = pro.drop(*cols_to_drop)
+        pro = add_last_mission_col_to_profile_df(pro, pro_pos)
         return pro
 
     
@@ -3058,7 +3119,7 @@ PLATFORM_TABLES = {
     "perso": ["collab_status", "leave", "workers"]
 }
 CATALOG = get_conf(spark, "catalog")
-create_quarantine_table(spark, CATALOG)
+#create_quarantine_table(spark, CATALOG)
 #create_quarantine_table_sanitize(spark, CATALOG)
 for platform, tables in PLATFORM_TABLES.items():
     for table in tables:

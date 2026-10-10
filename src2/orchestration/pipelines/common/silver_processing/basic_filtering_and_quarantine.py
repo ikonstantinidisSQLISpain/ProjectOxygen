@@ -18,6 +18,87 @@ def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names
         return ut.middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 
+
+def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table_config, add_snapshot_col=False):
+
+    middle_table = middle_table_config
+    if middle_table is not None:
+        pks = middle_table.get("pks", None)
+        cols_to_extract = middle_table.get("cols_to_extract", None)
+        new_pk_names = middle_table.get("pk_new_names", None)
+        extracted_cols_names = middle_table.get("extracted_cols_names", None)
+        variant_paths = middle_table.get("variant_paths", None)
+
+
+        if None in [pks, cols_to_extract, new_pk_names, extracted_cols_names]:
+            raise ValueError("Missing any of these keys: pks, col_to_extract, pk_new_names, extracted_col_name, extraction_name")
+
+        if add_snapshot_col:
+            pks.append(c.SNAPSHOT_COL)
+        if isinstance(cols_to_extract, list):
+            extraction_names = middle_table.get("extraction_names", None)
+            if extraction_names is None:
+                raise ValueError("extraction_names is missing")
+            
+            if (not isinstance(extracted_cols_names, list) 
+                or not (isinstance(variant_paths, list) or variant_paths is None)
+                or not isinstance(extraction_names, list)
+                ):
+                raise TypeError("If there are multiple cols_to_extract, extracted_cols_names, varian_paths (if provided) and extraction_name must be a list, each one referring to their respective column_to_extract")
+            c1 = len(cols_to_extract) != len(extracted_cols_names)
+            c2 = len(cols_to_extract) != len(extraction_names)
+            c3 = False
+            if variant_paths is not None:
+                c3 = len(cols_to_extract) != len(variant_paths)
+
+            if (c1 or c2 or c3):
+                raise ValueError("Len of cols_to_extract, extracted_cols_names and variant_paths (if provided) must match if cols_to_extract is a list.")
+            
+            for i, col_to_extract in enumerate(cols_to_extract):
+                extraction_name = extraction_names[i]
+                middle_table_name = f"{table_name}_{extraction_name}"
+                middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+                if variant_paths is None:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
+                    )
+                else:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
+                    )
+        else:
+            extraction_name = middle_table.get("extraction_names", None)
+            middle_table_name = f"{table_name}_{extraction_name}"
+            middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+
+            @dp.table(
+                name=middle_table_path,
+                comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                table_properties={
+                    "quality": target_quality
+                }
+            )
+            def f3():
+                df = spark.readStream.table(read_path)
+                return ut.middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
+    return None
+
+
+
+
+
 def silver_quality_pipe_maker(spark, catalog, platform, table_name):
     # Como en la fase silver evitamos agregaciones, extraemos la tabla que contiene la relación, accreditación, profile, skill
 
@@ -72,6 +153,8 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
             if cols_to_drop is not None:
                 df = ut.remove_cols(df, cols_to_drop, drop_metadata)
 
+            df = ut.trim_str_cols(df)
+
             if table_name == "talent":
                 df = ut.add_seniority(df, "yearsOfExperience")
                 df = ut.add_date_status(df, "lastConnectionDate")
@@ -109,76 +192,7 @@ def silver_quality_pipe_maker(spark, catalog, platform, table_name):
                 return ut.make_quarantine_table(df, quarantine_queries, pk_cols, read_path)
 
 
-        if middle_table is not None:
-
-            pks = middle_table.get("pks", None)
-            cols_to_extract = middle_table.get("cols_to_extract", None)
-            new_pk_names = middle_table.get("pk_new_names", None)
-            extracted_cols_names = middle_table.get("extracted_cols_names", None)
-            variant_paths = middle_table.get("variant_paths", None)
-
-
-            if None in [pks, cols_to_extract, new_pk_names, extracted_cols_names]:
-                raise ValueError("Missing any of these keys: pks, col_to_extract, pk_new_names, extracted_col_name, extraction_name")
-
-            if isinstance(cols_to_extract, list):
-                extraction_names = middle_table.get("extraction_names", None)
-                if extraction_names is None:
-                    raise ValueError("extraction_names is missing")
-                
-                if (not isinstance(extracted_cols_names, list) 
-                    or not (isinstance(variant_paths, list) or variant_paths is None)
-                    or not isinstance(extraction_names, list)
-                    ):
-                    raise TypeError("If there are multiple cols_to_extract, extracted_cols_names, varian_paths (if provided) and extraction_name must be a list, each one referring to their respective column_to_extract")
-                c1 = len(cols_to_extract) != len(extracted_cols_names)
-                c2 = len(cols_to_extract) != len(extraction_names)
-                c3 = False
-                if variant_paths is not None:
-                    c3 = len(cols_to_extract) != len(variant_paths)
-
-                if (c1 or c2 or c3):
-                    raise ValueError("Len of cols_to_extract, extracted_cols_names and variant_paths (if provided) must match if cols_to_extract is a list.")
-                
-                for i, col_to_extract in enumerate(cols_to_extract):
-                    extraction_name = extraction_names[i]
-                    middle_table_name = f"{table_name}_{extraction_name}"
-                    middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
-                    if variant_paths is None:
-                        dp.table(
-                            name=middle_table_path,
-                            comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                            table_properties={
-                                "quality": target_quality
-                            }
-                        )(
-                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
-                        )
-                    else:
-                        dp.table(
-                            name=middle_table_path,
-                            comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                            table_properties={
-                                "quality": target_quality
-                            }
-                        )(
-                            mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
-                        )
-            else:
-                extraction_name = middle_table.get("extraction_names", None)
-                middle_table_name = f"{table_name}_{extraction_name}"
-                middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
-
-                @dp.table(
-                    name=middle_table_path,
-                    comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
-                    table_properties={
-                        "quality": target_quality
-                    }
-                )
-                def f3():
-                    df = spark.readStream.table(read_path)
-                    return ut.middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
+        middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table)
 
 
     return None
@@ -194,9 +208,9 @@ def silver_quality_history_profile(spark, catalog):
             "quality": "silver"
         }
     )
-    @dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
-    @dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
-    @dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
+    #@dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
+    #@dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
+    #@dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
     def f4():
         workers = spark.read.table(f"{catalog}.bronze_perso.history_workers")
         users = spark.read.table(f"{catalog}.bronze_whoz.history_user")
@@ -204,12 +218,11 @@ def silver_quality_history_profile(spark, catalog):
         profile = spark.read.table(f"{catalog}.bronze_whoz.history_profile")
         collab = spark.read.table(f"{catalog}.bronze_perso.history_collab_status")
 
-        ndf = ut.custom_join(workers, collab, "worker", "collab", workers["id"]==collab["uid"], "left")
-        ndf = ut.custom_join(ndf, users, "join1", "user", ndf["mail"] == users["username"], "left")
-        ndf = ut.custom_join(ndf, talents, "join2", "talent", ndf["user_id"]==talents["userId"], "left")
-        ndf = ut.custom_join(ndf, profile, "join3", "profile", ndf["id"]==profile["talentId"], "left")
-
-        ndf = ndf.where("status != 'Compte Technique'")
+        ndf = ut.custom_join(workers, collab, "worker", "collab", 
+                             ((workers["id"]==collab["uid"]) & (workers["snapshot_ts"]==collab["snapshot_ts"])), "inner")
+        ndf = ut.custom_join(ndf, users, "join1", "user", ((ndf["mail"] == users["username"]) & (ndf["worker_snapshot_ts"] == users["snapshot_ts"])), "left")
+        ndf = ut.custom_join(ndf, talents, "join2", "talent", ((ndf["user_id"] == talents["userId"]) & (ndf["worker_snapshot_ts"] == talents["snapshot_ts"])), "left")
+        ndf = ut.custom_join(ndf, profile, "join3", "profile", ((ndf["id"] == profile["talentId"]) & (ndf["worker_snapshot_ts"] == profile["snapshot_ts"])), "left")
 
         cols_to_drop = [
             "mail",

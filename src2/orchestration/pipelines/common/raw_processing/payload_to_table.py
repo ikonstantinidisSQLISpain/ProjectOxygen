@@ -8,8 +8,8 @@ import common.constants as c
 from pathlib import Path
 # This file has all the functions neccessary to translate a payload variant column from raw table into a bronze table.
 
-import cloudpickle
-cloudpickle.register_pickle_by_value(sys.modules[__name__])
+#import cloudpickle
+#cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 
 def payload_subset_expr_string_maker(variant_col_name, cols_to_select):

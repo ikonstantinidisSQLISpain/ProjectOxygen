@@ -1,0 +1,29 @@
+id:
+  description: 'Unique identifier of the site.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+active:
+  description: 'Indicates whether the site is active.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name:
+  description: 'Name of the geographic site or location.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

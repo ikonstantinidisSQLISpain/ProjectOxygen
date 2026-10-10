@@ -1,0 +1,279 @@
+id:
+  description: 'Unique identifier of the skill.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+parentId:
+  description: 'Identifier of the parent skill in the skill hierarchy.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+alsoPartOf:
+  description: 'Additional skills groups or categories to which the skill belongs.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+type:
+  description: 'Type or category of the skill.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+granularity:
+  description: 'Level of detail or specificity of the skill.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+coreSkills:
+  description: 'Related core skills associated with the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+removed:
+  description: 'Indicates whether the skill has been removed or deprecated.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+nature:
+  description: 'Nature or classification of the skill.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+federationId:
+  description: 'Federated identifier associated with the skill.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name:
+  description: 'Localized name of the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+name_language:
+  description: 'Language code of the skill name.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name_text:
+  description: 'Skill name in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+description:
+  description: 'Localized description of the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+description_language:
+  description: 'Language code of the skill description.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+description_text:
+  description: 'Skill description in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+terms:
+  description: 'Localized terms and keywords associated with the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+terms_language:
+  description: 'Language code of the skill terms.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+terms_text:
+  description: 'Terms and keywords associated with the skill in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+hiddenTerms:
+  description: 'Hidden search terms associated with the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+hiddenTerms_language:
+  description: 'Language code of the hidden skill terms.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+hiddenTerms_text:
+  description: 'Hidden search terms associated with the skill in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+wikipediaLink:
+  description: 'Localized Wikipedia reference associated with the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+wikipediaLink_language:
+  description: 'Language code of the Wikipedia reference.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+wikipediaLink_text:
+  description: 'Wikipedia URL associated with the skill in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+depiction:
+  description: 'Localized visual representation associated with the skill.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: True
+
+depiction_language:
+  description: 'Language code of the depiction metadata.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+depiction_text:
+  description: 'Visual representation reference associated with the skill in the specified language.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  

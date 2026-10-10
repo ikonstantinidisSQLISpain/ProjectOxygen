@@ -1,0 +1,20 @@
+description: A profile details a talent's education, experience, and professional skills. The provided information enables Whoz to search and match talents to tasks.
+source:
+  path: Documents/SQLI-INTERNAL/app-reports/others/whoz__profile_report
+  origin: Whoz API (https://developer.whoz.com/)
+  data:
+    description: Source files for Profiles.
+    format: json
+    schema: whoz
+    entity: profile
+    file_naming_convention: SnapshotDate__others_schema_entity_report.format
+    notes:
+      - Data is loaded as snapshots, they mostly have the same data each time, though the values may change over time.
+    file_size_stats:
+      min: 184
+      max: 197
+      avg: 190
+      units: MB
+  update_frequency: nearly daily
+layer: raw
+grain: Each row represents a profile.

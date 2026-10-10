@@ -1,0 +1,81 @@
+uid:
+  description: 'Unique identifier of the worker.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+matricule:
+  description: 'Employee registration number or personnel identifier.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+display_name:
+  description: 'Full display name of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+bu:
+  description: 'Business unit to which the worker belongs.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+user_category:
+  description: 'Category or classification of the worker.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+departure_date:
+  description: 'Date on which the worker left the organization.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+departure_type:
+  description: 'Type or reason for the worker departure.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+date_of_receipt:
+  description: 'Date on which the departure notification was received.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

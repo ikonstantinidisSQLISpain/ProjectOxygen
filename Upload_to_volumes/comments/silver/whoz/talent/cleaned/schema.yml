@@ -1,0 +1,490 @@
+id:
+  description: 'Unique identifier of the talent.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+federationId:
+  description: 'Federated identifier associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+userId:
+  description: 'Identifier of the associated Whoz user.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+firstName:
+  description: 'First name of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastName:
+  description: 'Last name of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+nationalities:
+  description: 'Nationalities associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+emails:
+  description: 'Email addresses associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+address:
+  description: 'Address information associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+lastConnectionDate:
+  description: 'Date and time of the last connection to the platform.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+permissionScope:
+  description: 'Permission scope assigned to the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+tags:
+  description: 'Tags associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+aspirations:
+  description: 'Career aspirations defined for the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+sharingDestinations:
+  description: 'Destinations with which the talent profile can be shared.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+history:
+  description: 'Historical information associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+maxWorkingHours:
+  description: 'Maximum working hours defined for the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+timeEntryPreferredUnit:
+  description: 'Preferred unit used for time entry.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+recruitment:
+  description: 'Recruitment-related information associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+qualificationIds:
+  description: 'List of qualification identifiers associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+customFields:
+  description: 'Custom attributes configured for the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+freelyAssignable:
+  description: 'Indicates whether the talent can be freely assigned to staffing activities.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+createdBy:
+  description: 'Identifier of the user who created the talent record.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+createdDate:
+  description: 'Date and time when the talent record was created.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastModifiedBy:
+  description: 'Identifier of the user who last modified the talent record.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+lastModifiedDate:
+  description: 'Date and time when the talent record was last modified.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+removed:
+  description: 'Indicates whether the talent record has been removed.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+workspaceId:
+  description: 'Identifier of the workspace associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+isAnonymized:
+  description: 'Indicates whether the talent data has been anonymized.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+staffable:
+  description: 'Indicates whether the talent is available for staffing.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastInvitationDate:
+  description: 'Date and time of the last platform invitation.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+initials:
+  description: 'Initials of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+managerId:
+  description: 'Identifier of the manager associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+workingLifeEntryDate:
+  description: 'Date when the talent entered the workforce.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+yearsOfExperience:
+  description: 'Total years of professional experience.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+removedDate:
+  description: 'Date and time when the talent record was removed.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+gender:
+  description: 'Gender of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+phoneNumber:
+  description: 'Phone number associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+mentorId:
+  description: 'Identifier of the mentor associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+externalId:
+  description: 'External identifier associated with the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+photo:
+  description: 'Photo associated with the talent.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    nested_structures: True
+
+language:
+  description: 'Preferred language of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+birthdate:
+  description: 'Date of birth of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+availabilityConfirmationDate:
+  description: 'Date and time when availability was last confirmed.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+availabilityConfirmationDateLastUpdatedBy:
+  description: 'Identifier of the user who last updated the availability confirmation date.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+
+remoteWork:
+  description: 'Indicates whether the talent is available for remote work.'
+  type: boolean
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+Seniority:
+  description: 'Seniority level of the talent.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+DaysSince:
+  description: 'Number of days elapsed since the last platform connection.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastConnectionDate_Status:
+  description: 'Connection status derived from the last connection date.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

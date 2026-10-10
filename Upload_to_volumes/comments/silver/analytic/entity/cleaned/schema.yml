@@ -1,0 +1,74 @@
+id:
+  description: 'Unique identifier of the business entity.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+active:
+  description: 'Indicates whether the business entity is currently active.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+name:
+  description: 'Business name of the entity.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+manager:
+  description: 'List of managers responsible for overseeing the business entity.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+hrbp:
+  description: 'List of Human Resources Business Partner assigned to the business entity.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+  nested_structures: True
+
+staff_manager:
+  description: 'List of Staff manager responsible for workforce management within the business entity.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0referential_integrity: Should be granted.
+  nested_structures: True
+
+whoz_key_A:
+  description: 'External identifier used to map the business entity with the Whoz platform.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0

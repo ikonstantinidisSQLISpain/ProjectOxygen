@@ -145,6 +145,7 @@ def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False)
         return RawReader.raw_json_reader(spark, read_volume, files_glob_regex, streaming)
 
 
+    """
     # We add the error derivation to quarantine table
     quarantine_schema = ut.get_quarantine_schema(spark)
     quarantine_table = ut.get_quarantine_table(spark, "files")
@@ -161,7 +162,8 @@ def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False)
             "file_name_error"
         )
         return quarantine_df
-
+    """
+    
     return None
 
 

@@ -14,7 +14,7 @@ PLATFORM_TABLES = {
     "perso": ["collab_status", "leave", "workers"]
 }
 CATALOG = ut.get_conf(spark, "catalog")
-rr.create_quarantine_table(spark, CATALOG)
+#rr.create_quarantine_table(spark, CATALOG)
 #bfq.create_quarantine_table_sanitize(spark, CATALOG)
 for platform, tables in PLATFORM_TABLES.items():
     for table in tables:

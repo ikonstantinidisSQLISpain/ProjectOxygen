@@ -128,3 +128,11 @@ resources:
             notebook_path: "../src2/orchestration/jobs/get_latest_snapshot/get_latest_snapshot.ipynb"
             base_parameters:
               latest_snapshots_file: ${var.latest_snapshots_file}
+    add_metadata:
+      name: add_tables_metadata
+      tasks:
+        - task_key: add_metadata
+          notebook_task:
+            notebook_path: "../src2/orchestration/jobs/metadata_adder/metadata_adder.ipynb"
+            base_parameters:
+              comments_volume: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/comments/"

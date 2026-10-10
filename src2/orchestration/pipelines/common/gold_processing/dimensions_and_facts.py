@@ -129,13 +129,14 @@ def worker_process_pipe_maker(sparkSession, catalog, enable_quarantine: bool = F
 
 def worker_process_2(worker, collab_status, leave):
 
-    ndf = ut.custom_join(worker, collab_status, "worker", "collab", worker["id"] == collab_status["uid"], "left")
+    ndf = ut.custom_join(worker, collab_status, "worker", "collab", worker["id"] == collab_status["uid"], "inner")
     ndf = ut.custom_join(
         ndf, leave,
         "worker_2", "leave",
         ndf["id"] == leave["uid"],
         "left"
     )
+    ndf = ndf.where("status_name != 'Compte Technique'")
 
     cols_to_drop = [
         "skill",
@@ -339,6 +340,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
     @dp.expect_or_drop("talent_not_missing", "talentId IS NOT NULL")
     def f6():
         pro = spark.read.table(read_path_pro)
+        pro_pos = spark.read.table(read_path_pos)
         cols_to_drop = [
             "completionDetails",
             "customFields",
@@ -353,6 +355,7 @@ def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
             "resume"
         ]
         pro = pro.drop(*cols_to_drop)
+        pro = ut.add_last_mission_col_to_profile_df(pro, pro_pos)
         return pro
 
     

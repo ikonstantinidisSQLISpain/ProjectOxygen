@@ -1,0 +1,160 @@
+id:
+  description: 'Unique identifier of the accreditation.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+profileId:
+  description: 'Identifier of the profile associated with the accreditation.'
+  type: string
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+attachment:
+  description: 'Attachment or supporting document associated with the accreditation.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+  nested_structures: true
+
+createdBy:
+  description: 'Identifier of the user who created the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+createdDate:
+  description: 'Date and time when the accreditation was created.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+deliveringEntity:
+  description: 'Organization or entity that issued the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+federationId:
+  description: 'Federated identifier associated with the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastModifiedBy:
+  description: 'Identifier of the user who last modified the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+lastModifiedDate:
+  description: 'Date and time when the accreditation was last modified.'
+  type: timestamp
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+obtentionDate:
+  description: 'Date on which the accreditation was obtained.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+talentId:
+  description: 'Identifier of the talent associated with the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+title:
+  description: 'Title of the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+qualificationIds:
+  description: 'List of qualification identifiers associated with the accreditation.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+description:
+  description: 'Detailed description of the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+expirationDate:
+  description: 'Date on which the accreditation expires.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+
+qualificationId:
+  description: 'Identifier of the qualification associated with the accreditation.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: true
+  quality:
+    null_percen: 0
+    unique_percen: 0

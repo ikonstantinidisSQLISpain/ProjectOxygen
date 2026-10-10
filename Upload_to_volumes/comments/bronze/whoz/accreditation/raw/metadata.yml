@@ -1,0 +1,8 @@
+description: 'Original data for accreditation.'
+grain: JSON row
+source:
+  origin: Whoz API (https://developer.whoz.com/) stored in Sharepoint files from SQLi-Internal/app-reports
+  data:
+    description: ''
+    format: JSON
+  update_frequency: daily

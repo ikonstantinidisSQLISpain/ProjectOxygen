@@ -1,0 +1,74 @@
+id:
+  description: 'Identifier of the department.'
+  type: int
+  nullable: false
+  is_pk: true
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+code:
+  description: 'Code that identifies the department.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+active:
+  description: 'Whether the department is active or not.'
+  type: int
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+name:
+  description: 'Name of the department.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+short_name:
+  description: 'Short name of the department.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+technical_name:
+  description: 'Technical name of the department.'
+  type: string
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+associated_zone:
+  description: 'List of zone IDs associated with this department.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: True
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
+associated_service_line:
+  description: 'List of service line IDs associated with this department.'
+  type: variant
+  nullable: false
+  is_pk: false
+  is_fk: false
+  quality:
+    null_percen: 0
+    unique_percen: 0
+    referential_integrity: Should be granted.
