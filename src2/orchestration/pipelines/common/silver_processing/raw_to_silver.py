@@ -9,7 +9,7 @@ import common.silver_processing.basic_filtering_and_quarantine as bfq
 from pathlib import Path
 
 
-def from_raw_to_full_silver_steps(spark, table_name, raw_df):
+def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
 
     known_schema_vol = ut.get_table_volume(spark, "schema", platform, table_name)
     known_schema_file = ut.get_table_metadata_files(spark, "schema", platform, table_name)
@@ -33,14 +33,18 @@ def from_raw_to_full_silver_steps(spark, table_name, raw_df):
         base = ut.add_profile_score_f(base)
         base = ut.add_bucket_and_status(base, "completionRate")
         base = ut.add_date_status_prof(base, "lastModifiedDate")
+        base = ut.add_profile_score_f(base)
     if table_name in ["certification"]:
         base = ut.add_is_active_col(base, "endDate")
 
     default_config_file_name = ut.get_conf(spark, "file.default_config")
+
     table_config_file_name = ut.get_table_metadata_files(spark, "config", platform, table_name)
     table_config_volume = ut.get_table_volume(spark, "config", platform, table_name)
     table_config_path = Path(table_config_volume) / table_config_file_name
+
     default_config_path = Path(table_config_volume) / default_config_file_name
+
     table_config = ut.get_table_config(table_config_path, platform, table_name, default_config_path)
     silver_config = table_config.get("silver", None)
 
@@ -61,8 +65,42 @@ def from_raw_to_full_silver_steps(spark, table_name, raw_df):
     if filter_queries is not None:
         silver_df = ut.filter_conditions(silver_df, filter_queries)
 
+    if cols_to_drop is not None:
+        silver_df = silver_df.drop(*cols_to_drop)
+    if drop_metadata:
+        silver_df = silver_df.drop(*c.METADATA_COLUMNS)
 
     return silver_df
+
+
+def silver_pipe_maker(spark, catalog, platform, table_name):
+
+    read_path = f"{catalog}.bronze_{platform}.raw_{table_name}"
+    target_path = f"{catalog}.silver_{platform}.cleaned_{table_name}"
+    @dp.table(
+        name=target_path,
+    )
+    def f():
+        raw_df = spark.read.table(read_path)
+        silver_df = from_raw_to_full_silver_steps(spark, platform, table_name, raw_df)
+        return silver_df
+
+
+    default_config_file_name = ut.get_conf(spark, "file.default_config")
+    table_config_file_name = ut.get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = ut.get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+    default_config_path = Path(table_config_volume) / default_config_file_name
+    table_config = ut.get_table_config(table_config_path, platform, table_name, default_config_path)
+    silver_config = table_config.get("silver", None)
+
+    if silver_config is not None:
+        middle_table = silver_config.get("middle_table", None)
+        if middle_table is not None:
+            bfq.middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table, True)
+
+    return None
+
 
 
 

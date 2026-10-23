@@ -4,6 +4,7 @@ import pyspark.sql as sql
 import pyspark.sql.functions as F
 import pyspark.pipelines as dp
 import common.utils as ut
+import common.raw_processing.snapshot_processor as sp
 
 
 
@@ -196,6 +197,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
         worker = sparkSession.read.table(read_path_worker)
         cs = sparkSession.read.table(read_path_cs)
         l = sparkSession.read.table(read_path_leave)
+        worker = 
         return worker_process_2(worker, cs, l)
 
     if enable_quarantine:
@@ -502,6 +504,7 @@ def dimension_organization_pipe_maker(sparkSession, catalog):
             "zone_name",
             F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
         )
+        ndf = ut.dim_organization_extra_columns(sparkSession, ndf)
         return ndf
 
     return None

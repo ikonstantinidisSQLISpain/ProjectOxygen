@@ -112,6 +112,10 @@ resources:
         file.latest_snapshot: ${var.latest_snapshots_file}
         file.encode.site_maps: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/site_maps.csv"
         file.encode.department_zone_map: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/department_zone.csv"
+        file.encode.service_line_name_family: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/service_line_name_contains_family.csv"
+        file.encode.service_line_zone_manager: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/service_line_zone_family_manager.csv"
+        file.encode.zone_practice_region: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/zone_region.csv"
+        file.encode.region_practice_manager: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/region_practice_manager.csv"
       libraries:
         - file:
             path: "../src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py"

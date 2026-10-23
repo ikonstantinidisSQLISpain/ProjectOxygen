@@ -1225,8 +1225,17 @@ class ProfileScoreNamespace():
             score
         ).withColumn(
             f"profileScore_Status",
-            F.when(F.col("profileScore") > 60, "Completed")
+            F.when(F.col("profileScore") >= 60, "Completed")
                 .otherwise("Not completed")
+        ).withColumn(
+            "profile_OK",
+            F.when(
+                (
+                    (F.col("profileScore") >= 60)
+                    & (F.col("completionRate") >= 0.8)
+                ),
+                "Ok"
+            ).otherwise("Not Ok")
         )
 
         return ndf
@@ -1337,29 +1346,18 @@ def max_filter(df, pk_cols, col_to_select, temp_view_name):
 
     cols = [c for c in df.columns if c not in pk_cols]
 
-    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias("max_"))
+    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias(f"max_{col_to_select}"))
 
-    df.createOrReplaceTempView(temp_view_name)
-    max_df.createOrReplaceTempView(temp_view_name + "_max")
-    """
-    # Join con el dataframe original para obtener las filas completas
-    ndf = df.join(
-        max_,
-        on=pk_cols
-    ).filter(
-        F.col(col_to_select) == F.col("max_")
-    ).drop("max_")
-    """
+    ndf = custom_join(ndf, max_df, "og", "max", "left")
 
-    left_alias = "og"
-    right_alias = "m"
-    join_cols_sql = " AND ".join(f"{left_alias}.{pk} = {right_alias}.{pk}" for pk in pk_cols)
+    c_to_drop = list()
+    for pk in pk_cols:
+        ndf = ndf.withColumnRenamed(f"og_{pk}", pk)
+        c_to_drop.append(f"max_{pk}")
 
-    df_cols = df.columns
-    select_cols_sql = ", ".join(f"{left_alias}.{col} AS {col}" for col in df_cols)
+    ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
+    ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     
-    # We need to creat the temp view and use sql
-    ndf = spark.sql(f"SELECT {select_cols_sql} FROM {temp_view_name} AS {left_alias} LEFT JOIN {temp_view_name + "_max"} AS {right_alias} ON {join_cols_sql} WHERE {left_alias}.{col_to_select} = {right_alias}.max_")
     return ndf
 
 
@@ -1486,5 +1484,116 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
     return ndf
 
+
+
+
+
+def dim_organization_extra_columns(sparkSession, dim_org_df):
+
+    slf = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_name_family"),
+        header=True,
+        inferSchema=True)
+    
+    expr = None
+    for row in slf.select("ServiceLineName_contains", "Family").collect():
+        if expr is None:
+            expr = F.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+        else:
+            expr = expr.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+    expr = expr.otherwise("Other")
+    ndf = dim_org_df.withColumn(
+        "family",
+        expr
+    )
+    
+    slm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_zone_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr2 = None
+    for row in slm.select("Zone", "Family", "Manager").collect():
+        if expr2 is None:
+            expr2 = F.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+        else:
+            expr2 = expr2.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+    expr2 = expr2.otherwise(None)
+    ndf = ndf.withColumn(
+        "service_line_manager",
+        expr2
+    )
+
+
+    zpr = spark.read.csv(
+        get_conf(sparkSession, "file.encode.zone_practice_region"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr3 = None
+    for row in zpr.select("Zone", "service_line_contains", "Region").collect():
+        if row["service_line_contains"] is None:
+            constraint = (
+                (F.col("zone_name") == row["Zone"])
+                & (F.col("service_line_name").contains(row["service_line_contains"]))
+            )
+        else:
+            constraint = F.col("zone_name") == row["Zone"]
+
+        if expr3 is None:
+            expr3 = F.when(constraint, row["Region"])
+        else:
+            expr3 = expr3.when(constraint, row["Region"])
+    expr3 = expr3.otherwise(None)
+
+    ndf = ndf.withColumn(
+        "region",
+        expr3
+    )
+
+    rpm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.region_practice_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr4 = None
+    for row in rpm.select("Region", "Practice_contains", "PracticeManager").collect():
+        if expr4 is None:
+            expr4 = F.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+        else:
+            expr4 = expr4.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+    expr4 = expr4.otherwise(None)
+
+
+    ndf = ndf.withColumn(
+        "practice_manager",
+        expr4
+    )
+
+
+    return ndf
 
 

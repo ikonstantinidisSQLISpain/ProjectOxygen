@@ -1244,8 +1244,17 @@ class ProfileScoreNamespace():
             score
         ).withColumn(
             f"profileScore_Status",
-            F.when(F.col("profileScore") > 60, "Completed")
+            F.when(F.col("profileScore") >= 60, "Completed")
                 .otherwise("Not completed")
+        ).withColumn(
+            "profile_OK",
+            F.when(
+                (
+                    (F.col("profileScore") >= 60)
+                    & (F.col("completionRate") >= 0.8)
+                ),
+                "Ok"
+            ).otherwise("Not Ok")
         )
 
         return ndf
@@ -1505,6 +1514,117 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
     return ndf
 
+
+
+
+
+def dim_organization_extra_columns(sparkSession, dim_org_df):
+
+    slf = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_name_family"),
+        header=True,
+        inferSchema=True)
+    
+    expr = None
+    for row in slf.select("ServiceLineName_contains", "Family").collect():
+        if expr is None:
+            expr = F.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+        else:
+            expr = expr.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+    expr = expr.otherwise("Other")
+    ndf = dim_org_df.withColumn(
+        "family",
+        expr
+    )
+    
+    slm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_zone_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr2 = None
+    for row in slm.select("Zone", "Family", "Manager").collect():
+        if expr2 is None:
+            expr2 = F.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+        else:
+            expr2 = expr2.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+    expr2 = expr2.otherwise(None)
+    ndf = ndf.withColumn(
+        "service_line_manager",
+        expr2
+    )
+
+
+    zpr = spark.read.csv(
+        get_conf(sparkSession, "file.encode.zone_practice_region"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr3 = None
+    for row in zpr.select("Zone", "service_line_contains", "Region").collect():
+        if row["service_line_contains"] is None:
+            constraint = (
+                (F.col("zone_name") == row["Zone"])
+                & (F.col("service_line_name").contains(row["service_line_contains"]))
+            )
+        else:
+            constraint = F.col("zone_name") == row["Zone"]
+
+        if expr3 is None:
+            expr3 = F.when(constraint, row["Region"])
+        else:
+            expr3 = expr3.when(constraint, row["Region"])
+    expr3 = expr3.otherwise(None)
+
+    ndf = ndf.withColumn(
+        "region",
+        expr3
+    )
+
+    rpm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.region_practice_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr4 = None
+    for row in rpm.select("Region", "Practice_contains", "PracticeManager").collect():
+        if expr4 is None:
+            expr4 = F.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+        else:
+            expr4 = expr4.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+    expr4 = expr4.otherwise(None)
+
+
+    ndf = ndf.withColumn(
+        "practice_manager",
+        expr4
+    )
+
+
+    return ndf
 
 
 
@@ -2871,6 +2991,7 @@ def dimension_organization_pipe_maker(sparkSession, catalog):
             "zone_name",
             F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
         )
+        ndf = dim_organization_extra_columns(sparkSession, ndf)
         return ndf
 
     return None
