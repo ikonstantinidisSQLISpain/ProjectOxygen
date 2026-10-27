@@ -1,0 +1,3658 @@
+# constants.py
+
+
+
+METADATA_COLUMNS = [
+    "_source_file",
+    "_source_file_name",
+    "_source_file_size",
+    "_source_file_modified_at"
+]
+
+SNAPSHOT_COL = "snapshot_ts"
+INGEST_TS_COL = "ingest_ts"
+
+KNOWN_SNAPSHOT = "known_latest_snapshot"
+
+
+# utils.py
+
+import sys, os
+"""
+for _p in [os.path.abspath(p) for p in ['', '..']]:
+    if os.path.isdir(os.path.join(_p, 'common')) and _p not in sys.path:
+        sys.path.insert(0, _p)
+        break
+"""
+for _p in [os.path.abspath(p) for p in ['', '..']]:
+    if os.path.isdir(os.path.join(_p, 'common')) and _p not in sys.path:
+        sys.path.insert(0, _p)
+        break
+
+
+import json
+from pathlib import Path
+import pyspark.sql.functions as F
+import pyspark.sql.types as ty
+# import common.constants as c
+from functools import reduce
+import datetime as dt
+import pandas as pd
+
+
+
+def get_conf(spark, config_key):
+    return spark.conf.get(config_key, None)
+
+def get_quality(spark, quality):
+    return get_conf(spark, f"qualities.{quality}")
+
+def get_platform(spark, platform):
+    return get_conf(spark, f"platforms.{platform}")
+
+def get_quarantine_schema(spark):
+    return get_conf(spark, "quarantine.schema")
+
+def get_quarantine_table(spark, quarantine_table):
+    return get_conf(spark, f"quarantine.{quarantine_table}")
+
+def schema_name_builder(quality, platform):
+    return f"{quality}_{platform}"
+
+def table_name_builder(tag, name):
+    return f"{tag}_{name}"
+
+
+def get_table_volume(spark, vol_type, platform, table_name):
+    # Searchs the config for a volume associated to that platform and table, if it does not exist it returns the platform
+    # specific, and if it does fail aswell it returns the default volume.
+    
+    parts = ["volume", vol_type, platform, table_name]
+
+    for k in range(len(parts), 1, -1):
+        vol = get_conf(spark, ".".join(parts[:k]))
+        if vol is not None:
+            return vol
+
+    raise ValueError(f"Volume path not found in config. {vol_type}.{platform}.{table_name}")
+    return None
+
+def get_table_glob_regex(spark, platform, table_name):
+    return get_conf(spark, f"glob.data.{platform}.{table_name}")
+
+def get_table_metadata_files(spark, file_type, platform, table_name):
+    parts = ["file", file_type, platform, table_name]
+    for k in range(len(parts), 1, -1):
+        file = get_conf(spark, ".".join(parts[:k]))
+        if file is not None:
+            return file
+
+    raise ValueError(f"File path not found in config. {file_type}.{platform}.{table_name}")
+    return None
+
+
+def parse_date(fecha_str, valid_formats):
+
+    for formato in valid_formats:
+        try:
+            return dt.datetime.strptime(fecha_str, formato)
+        except ValueError:
+            pass
+
+    raise ValueError(f"Invalid date format: {fecha_str} [{valid_formats}]")
+
+
+def load_json(path: str | Path) -> dict:
+    """
+    Loads a JSON file and return its contents as a Python dictionary.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        A dictionary containing the parsed JSON.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        json.JSONDecodeError: If the file does not contain valid JSON.
+        TypeError: If the top-level JSON object is not a dictionary or list.
+    """
+    with Path(path).open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if not isinstance(data, dict) and not isinstance(data, list):
+        raise TypeError(f"Expected a JSON object, got {type(data).__name__}")
+
+    return data
+
+
+
+def all_in(lista1, lista2):
+    return all(element in list(lista2) for element in list(lista1))
+
+def any_in(l1, l2):
+    for e in l1:
+        if e in l2:
+            return True
+    return False
+
+def get_table_config(config_file_path, platform, table, default_file_path):
+    platform_data = load_json(config_file_path).get(platform, None)
+    if platform_data is None:
+        return load_json(default_file_path)
+    table_data = platform_data.get(table, None)
+    if table_data is None:
+        return load_json(default_file_path)
+    return table_data
+
+
+
+
+def middle_table_extractor(sparkSession, 
+                           df, 
+                           df_pks, 
+                           col_to_extract, 
+                           pk_names, 
+                           final_cols_names, 
+                           sub_paths = None):
+
+    """
+Extracts values from a Variant column containing a list and generates a
+flattened intermediate (middle) table.
+
+This function is intended to transform columns containing arrays stored
+as Variant values into a normalized dataframe suitable for representing
+many-to-many relationships.
+
+Supported input structures
+--------------------------
+
+1. Array of strings:
+
+[
+    "id1",
+    "id2",
+    "id3"
+]
+
+Produces:
+
++------------+---------+
+| source_pk  | target  |
++------------+---------+
+| ...        | id1     |
+| ...        | id2     |
+| ...        | id3     |
++------------+---------+
+
+2. Array of objects:
+
+[
+    {"id": "id1", "name": "User 1"},
+    {"id": "id2", "name": "User 2"}
+]
+
+In this case, `sub_paths` must be provided to indicate which field(s)
+should be extracted from each object.
+
+The function preserves the specified primary key columns from the source
+dataframe and explodes the array values into individual rows.
+
+Parameters
+----------
+sparkSession : SparkSession
+    Active Spark session.
+
+df : pyspark.sql.DataFrame
+    Source dataframe containing the Variant column to process.
+
+df_pks : str | list[str]
+    Column(s) acting as primary keys in the source dataframe.
+
+col_to_extract : str
+    Variant column containing the array to be exploded.
+
+pk_names : str | list[str]
+    Output names for the primary key columns in the resulting dataframe.
+    Length must match `df_pks`.
+
+final_cols_names : str | list[str]
+    Name(s) of the output column(s) containing the extracted values.
+
+    - If `sub_paths` is None, a single string is expected.
+    - If `sub_paths` is provided, one output name must be supplied for
+      each path in `sub_paths`.
+
+sub_paths : str | list[str] | None, default=None
+    JSON path(s) to extract from each array element when the elements
+    are JSON objects.
+
+    Examples:
+        "id"
+        "$.id"
+        "$.user.id"
+
+    If None, array elements are assumed to be plain string values and
+    are returned directly.
+
+Returns
+-------
+pyspark.sql.DataFrame
+    A dataframe containing:
+
+    - The primary key columns renamed according to `pk_names`.
+    - One row per element of the exploded list.
+    - The extracted value column(s).
+
+Raises
+------
+TypeError
+    If any parameter is provided with an invalid type.
+
+ValueError
+    If:
+
+    - Primary key columns do not exist in the dataframe.
+    - The column to extract does not exist in the dataframe.
+    - The number of PK columns does not match the number of PK names.
+    - The number of output column names does not match the number of
+      provided sub-paths.
+    - Required mappings are missing or inconsistent.
+
+Notes
+-----
+- Variant arrays are converted using:
+
+      parse_json(cast(column as string))
+
+- Array expansion is delegated to:
+
+      explode_variant_list_column()
+
+- When `sub_paths` is provided, values are extracted using:
+
+      variant_get()
+
+Examples
+--------
+Extract an array of string IDs:
+
+>>> middle_table_extractor(
+...     spark,
+...     df,
+...     df_pks="project_id",
+...     col_to_extract="user_ids",
+...     pk_names="project_id",
+...     final_cols_names="user_id"
+... )
+
+Extract a single field from an array of objects:
+
+>>> middle_table_extractor(
+...     spark,
+...     df,
+...     df_pks="project_id",
+...     col_to_extract="users",
+...     pk_names="project_id",
+...     final_cols_names="user_id",
+...     sub_paths="id"
+... )
+
+Extract multiple fields from an array of objects:
+
+>>> middle_table_extractor(
+...     spark,
+...     df,
+...     df_pks="project_id",
+...     col_to_extract="users",
+...     pk_names="project_id",
+...     final_cols_names=["user_id", "user_name"],
+...     sub_paths=["id", "name"]
+... )
+"""
+
+    cols = df.columns
+
+    
+    if not isinstance(df_pks, (str, list)):
+        raise TypeError("df_pks must be a list or str")
+
+    if isinstance(df_pks, str):
+        df_pks = [df_pks]
+
+    if not isinstance(pk_names, (str, list)):
+        raise TypeError("pk_names must be a list or str")
+
+    if isinstance(pk_names, str):
+        pk_names = [pk_names]
+
+    if not isinstance(col_to_extract, str):
+        raise TypeError("col_to_extract must be a str")
+
+
+
+    if not isinstance(final_cols_names, (str, list)):
+        raise TypeError("final_cols_names must be a list or str")
+
+    if isinstance(final_cols_names, str):
+        final_cols_names = [final_cols_names]
+
+    if sub_paths is None:
+        if not isinstance(final_cols_names, str):
+            raise ValueError("final cols names must be a string if sub_paths is not provided.")
+
+    if len(df_pks) != len(pk_names):
+        raise ValueError("PK cols len must match names len")
+
+
+    if not all_in(df_pks, cols):
+        raise ValueError(f"provided Pks {df_pks, cols} are not in dataframe.")
+    
+    if col_to_extract not in cols:
+        raise ValueError(f"provided col_to_extract {col_to_extract, cols} are not in dataframe.")
+
+
+    cols_pk = [F.col(col).alias(name) for col, name in zip(df_pks, pk_names)]
+    cols_name = [F.col(name) for col, name in zip(df_pks, pk_names)]
+    cols_ini = list(df_pks)
+    cols_ini.append(col_to_extract)
+    ndf = df.select(*cols_ini)
+
+    ndf = ndf.withColumn(
+        col_to_extract,
+        F.expr(f"parse_json(cast({col_to_extract} as string))")
+    )
+    ndf = explode_variant_list_column(sparkSession, ndf, col_to_extract)
+    ndf = ndf.select(*cols_pk, F.col("value").alias(col_to_extract))
+
+    
+
+    if sub_paths is not None:
+        if not isinstance(sub_paths, (str, list)):
+            raise TypeError("sub_paths must be a list or str")
+
+        if isinstance(sub_paths, str):
+            sub_paths = [sub_paths]
+        if len(final_cols_names) != len(sub_paths):
+            raise ValueError("final_cols_names len must match sub_paths len")
+        
+        ndf = ndf.select(
+            *cols_name, 
+            *[
+                F.expr(
+                    f"""variant_get({col_to_extract}, '$.{sub_path.replace("$.", "")}', 'string')"""
+                ).alias(final_col_name)
+                for final_col_name, sub_path in zip(final_cols_names, sub_paths)
+            ]
+        )
+
+
+    return ndf
+
+
+def explode_variant_list_column(sparkSession, df, col_to_explode, remove_row_if_empty_list: bool = False, redo_og: bool = False):
+    """Returns the same df but with the col_to_explode column exploded"""
+    if col_to_explode not in df.columns:
+        raise ValueError(f"{col_to_explode} not in df columns: {df.columns}")
+
+    if remove_row_if_empty_list:
+        f = sparkSession.tvf.variant_explode
+    else:
+        f = sparkSession.tvf.variant_explode_outer
+    
+    ndf = df.lateralJoin(
+        f(F.col(col_to_explode).outer()) # Outer is needed if you want to use this expression in a pipeline
+    )
+
+    if redo_og:
+        ndf = ndf.drop(F.col(col_to_explode), F.col("key"), F.col("pos")).withColumnRenamed("value", col_to_explode)
+    return ndf
+
+
+
+
+
+
+def remove_cols(df, cols_to_drop, remove_metadata=True):
+
+    if not isinstance(cols_to_drop, (str, list)):
+        raise TypeError("cols to drop must be a list or str")
+
+    if isinstance(cols_to_drop, str):
+        cols_to_drop = [cols_to_drop]
+
+    cols = df.columns
+
+    if not all_in(cols_to_drop, cols):
+        raise ValueError(f"cols to drop are not in columns: {cols_to_drop} {cols}")
+
+    cols_to_remove = list(cols_to_drop)
+    if remove_metadata:
+        cols_to_remove.extend(METADATA_COLUMNS)
+        cols_to_remove.append(SNAPSHOT_COL)
+        cols_to_remove.append(INGEST_TS_COL)
+        cols_to_remove.append(KNOWN_SNAPSHOT)
+        cols_to_remove.append("remaining_payload")
+
+    
+    ndf = df.drop(*cols_to_remove)
+
+    return ndf
+
+
+def filter_conditions(df, list_of_constraints):
+    "Returns the filtered df with the rows that match all the conditions"
+    "list of contrains must be a list of contraint sql queries"
+    if not isinstance(list_of_constraints, list):
+        raise TypeError("List of constraints is not a list")
+
+    sql_statement = ""
+    n_cons = len(list_of_constraints)
+    ndf = df
+    for con in list_of_constraints:
+        ndf = ndf.where(con)
+
+    return ndf
+
+
+def make_quarantine_table(df, dict_of_constraints, pk_cols, table_path):
+    "Returns the filtered df with the rows PK that miss any of the conditions"
+    "list of contrains must be a list of tuple (constraint_query, error_description)"
+    if not isinstance(dict_of_constraints, dict):
+        raise TypeError("List of constraints is not a list")
+
+    if not isinstance(pk_cols, (str, list)):
+        raise TypeError("PK cols is not a list or str")
+
+    if isinstance(pk_cols, str):
+        pk_cols = [pk_cols]
+
+    list_of_df = list()
+    for cons, desc in dict_of_constraints.items():
+
+        sub_df = df.where(cons)
+        sub_df = sub_df.withColumn("error_description", F.lit(desc))
+        sub_df = sub_df.select(*pk_cols, "error_description")
+        list_of_df.append(sub_df)
+
+    
+    df_final = reduce(lambda df1, df2: df1.union(df2), list_of_df)
+
+
+    df_agg = (
+        df_final.groupBy(*pk_cols)
+        .agg(
+            F.concat_ws(" | ", F.collect_list("error_description")).alias("errors"),
+        )
+    )
+
+    df_agg = df_agg.withColumn("table_path", F.lit(table_path))
+    df_agg = df_agg.withColumn("pk_vals", 
+                                F.concat_ws(
+                                    " | ",
+                                    *[
+                                        F.concat(
+                                            F.lit(f"{col}: "),
+                                            F.coalesce(F.col(col).cast("string"), F.lit(""))
+                                        )
+                                        for col in pk_cols
+                                    ]
+                                )
+                                )
+    qdf = df_agg.drop(*pk_cols)
+    return qdf
+
+
+
+def extract_variant_keys(df, variant_col, variant_keys_formats):
+    if not isinstance(variant_keys_formats, dict):
+        raise ValueError("Variant keys format is not a dict")
+
+    ndf = df
+
+    for key, format_type in variant_keys_formats.items():
+        ndf = ndf.withColumn(
+            f"{variant_col}_{key}",
+            F.expr(f"variant_get({variant_col}, '$.{key}', '{format_type}')")
+        )
+    return ndf
+
+
+
+def classify_status_code(
+    spark,
+    df,
+    status_code_column: str):
+    csv_path = spark.conf.get("file.encode.collab_status")
+
+    status_mapping = (
+        pd.read_csv(csv_path)
+        .set_index("status_code")["status_name"]
+        .to_dict()
+    )
+
+    mapping_expr = F.create_map(
+        *[F.lit(x) for kv in status_mapping.items() for x in kv]
+    )
+
+    df = df.withColumn(
+        f"{status_code_column}_name",
+        mapping_expr[F.col("status")]
+    )
+
+    return df
+
+
+
+
+
+def add_bucket_and_status(df, column: str):
+    return (
+        df
+        .withColumn(
+            f"{column}_Bucket",
+            F.when(F.col(column) < 0.2, "0-0.2")
+             .when(F.col(column) < 0.4, "0.2-0.4")
+             .when(F.col(column) < 0.6, "0.4-0.6")
+             .when(F.col(column) < 0.8, "0.6-0.8")
+             .when(F.col(column) <= 1, "0.8-1")
+             .otherwise(None)
+        )
+        .withColumn(
+            f"{column}_Status",
+            F.when(F.col(column) >= 0.8, "Completed")
+             .otherwise("Not completed")
+        )
+    )
+
+
+def add_date_status(df, column: str):
+    days_since = F.datediff(F.current_date(), F.to_date(F.col(column)))
+
+    return (
+        df
+        .withColumn(
+            "DaysSince",
+            days_since
+        )
+        .withColumn(
+            f"{column}_Status",
+            F.when(F.col(column).isNull(), None)
+             .when(days_since < 7, "Active")
+             .when(days_since < 30, "Inactive - 30 days")
+             .when(days_since < 90, "Inactive - 90 days")
+             .otherwise("Inactive 90+ days")
+        )
+    )
+
+
+def add_date_status_prof(df, column: str):
+    days_since = F.datediff(F.current_date(), F.to_date(F.col(column)))
+
+    return (
+        df
+        .withColumn(
+            "DaysSince",
+            days_since
+        )
+        .withColumn(
+            f"{column}_Status",
+            F.when(F.col(column).isNull(), None)
+             .when(days_since < 30, "Last month")
+             .when(days_since < 90, "Last 3 months")
+             .otherwise("Inactive 90+ days")
+        )
+    )
+
+
+def add_seniority(df, column: str):
+    return (
+        df
+        .withColumn(
+            "Seniority",
+            F.when(F.col(column).isNull(), None)
+             .when(F.col(column) < 2, "Junior")
+             .when(F.col(column) < 5, "Intermediate")
+             .when(F.col(column) < 10, "Experienced")
+             .otherwise("Senior")
+        )
+    )
+
+
+def simple_word_extractor(text):
+    return text.strip().split(" ")
+
+def simple_word_counter(text):
+    return len(simple_word_extractor(text))
+
+
+def calculate_profile_completion_score(base_like_profile_df):
+
+    return ndf
+
+
+class ProfileScoreNamespace():
+    """Class that holds all the functions that are needed to calculate the completion_score"""
+    def __init__(self):
+
+        self.conditions_map = {
+            "c1": {
+                "function": self.positions_have_assignment,
+                "name": "positions_have_assignment",
+                "columns": ["positions"], # Table column names required for this function
+                "weight": 10.7 #15
+            },
+            "c2": {
+                "function": self.positions_have_skills,
+                "name": "positions_have_skills",
+                "columns": ["positions"],
+                "weight": 10.7 #15
+            },
+            "c3": {
+                "function": self.assignments_have_skills,
+                "name": "assignments_have_skills",
+                "columns": ["positions"],
+                "weight": 10.7 #15
+            },
+            "c4": {
+                "function": self.short_project_context,
+                "name": "short_project_context",
+                "columns": ["positions"],
+                "weight": 10.7 #15
+            },
+            "c5": {
+                "function": self.favourite_skills,
+                "name": "favourite_skills",
+                "columns": ["aptitudes"],
+                "weight": 10.7 #15
+            },
+            "c6": {
+                "function": self.profile_updated,
+                "name": "profile_updated",
+                "columns": ["lastModifiedDate", SNAPSHOT_COL],
+                "weight": 10.7 #15
+            },
+            "c7": {
+                "function": self.position_fields_filled,
+                "name": "position_fields_filled",
+                "columns": ["positions"],
+                "weight": 2.1 #3
+            },
+            "c8": {
+                "function": self.assignment_fields_filled,
+                "name": "assignment_fields_filled",
+                "columns": ["positions"],
+                "weight": 2.1 #3
+            },
+            "c9": {
+                "function": self.no_forbidden_words,
+                "name": "no_forbidden_words",
+                "columns": ["positions"],
+                "weight": 2.1 #3
+            },
+            "c10": {
+                "function": self.has_activity_area,
+                "name": "has_activity_area",
+                "columns": ["aptitudes"],
+                "weight": 5.7 #8
+            },
+            "c11": {
+                "function": self.no_free_text_skills,
+                "name": "no_free_text_skills",
+                "columns": ["aptitudes"],
+                "weight": 5.7 #8
+            },
+            "c12": {
+                "function": self.proficiency_on_twenty_pct,
+                "name": "proficiency_on_twenty_pct",
+                "columns": ["aptitudes"],
+                "weight": 5.7 #8
+            },
+            "c13": {
+                "function": self.all_skills_categorized,
+                "name": "all_skills_categorized",
+                "columns": ["aptitudes"],
+                "weight": 2.1 #3
+            },
+            "c14": {
+                "function": self.education_field_filled,
+                "name": "education_field_filled",
+                "columns": ["educations"],
+                "weight": 2.1 #3
+            },
+            "c15": {
+                "function": self.bio_word_count,
+                "name": "bio_word_count",
+                "columns": ["headline"],
+                "weight": 2.1 #3
+            },
+            "c16": {
+                "function": self.skills_linked_to_positions,
+                "name": "skills_linked_to_positions",
+                "columns": ["aptitudes","positions"],
+                "weight": 5.7 #8
+            },
+        }
+
+        self.weight_sum = sum([data["weight"] for data in self.conditions_map.values()])
+
+        return None
+
+    @staticmethod
+    def positions_have_assignment(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+        """Takes a profile base (see databricks instance) row and calculates if the condition is met."""
+        """
+        The process for this condition is the next:
+
+        1. Gather the positions.
+        2. For each position check if it has a parent
+        """
+        positions = profile_positions_col.toPython()
+
+
+        position_missions = dict()
+        n_positions = len(positions)
+
+        if n_positions == 0:
+            return False
+        
+        for p in positions:
+            parent_id = p.get("parentPositionId", None)
+            if parent_id is not None:
+                pos_mis = position_missions.get(parent_id, None)
+                if pos_mis is None:
+                    position_missions[parent_id] = {
+                        "mission_counter": 0,
+                        "non_mission_counter": 0, # Non missions should be the parent, and should always be 0
+                        "child_positions_counter": 0
+                    }
+
+                position_missions[parent_id]["child_positions_counter"] += 1
+                if p.get("isMission", None):
+                    position_missions[parent_id]["mission_counter"] += 1
+                else:
+                    position_missions[parent_id]["non_mission_counter"] += 1
+
+        pos_with_missions = 0
+        for parent, data in position_missions.items():
+            if data["mission_counter"] >= 1:
+                pos_with_missions += 1
+
+            if data["non_mission_counter"] > 0:
+                raise ValueError("non_mission_counter > 0, ERROR IN CODE")
+
+        if pos_with_missions == len(position_missions.keys()):
+            return True
+
+        return False
+
+    @staticmethod
+    def positions_have_skills(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+
+        """Checks if all the non mission positions have skills associated."""
+
+        positions = profile_positions_col.toPython()
+        n_positions = len(positions)
+
+        if n_positions == 0:
+            return False
+
+        position_skill = dict()
+        for p in positions:
+            mission = p.get("isMission", None)
+            if not mission or mission is None:
+                if position_skill.get(p["id"], None) is None:
+                    position_skill[p["id"]] = False
+                aptitudes = p.get("aptitudeReferences", None)
+                if aptitudes is not None:
+                    if len(aptitudes) > 0:
+                        position_skill[p["id"]] = True
+
+        if all(position_skill.values()):
+            return True
+        return False
+
+    @staticmethod
+    def assignments_have_skills(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+        """Same as positions_have_skills, but with missions"""
+        positions = profile_positions_col.toPython()
+        n_positions = len(positions)
+
+        if n_positions == 0:
+            return False
+        
+        position_skill = dict()
+        for p in positions:
+            mission = p.get("isMission", None)
+            if mission:
+                if position_skill.get(p["id"], None) is None:
+                    position_skill[p["id"]] = False
+                aptitudes = p.get("aptitudeReferences", None)
+                if aptitudes is not None:
+                    if len(aptitudes) > 0:
+                        position_skill[p["id"]] = True
+
+        if all(position_skill.values()):
+            return True
+        return False
+
+    @staticmethod
+    def short_project_context(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+        """Checks if missionContext or Description wordCount is in valid range(30, 150) both included"""
+        positions = profile_positions_col.toPython()
+        n_positions = len(positions)
+
+        if n_positions == 0:
+            return False
+
+        word_count_in_range = lambda count: count >= 30 and count <= 150
+        n_positions = len(positions)
+        correct_counter = 0
+        for p in positions:
+            if p.get("isMission", None):
+                desc = p.get("description", None)
+                if desc is not None:
+                    w_count = simple_word_counter(desc)
+                    if word_count_in_range(w_count):
+                        correct_counter += 1
+            elif p.get("isMission", None) is None:
+                pass
+            else:
+                m_context = p.get("missionContext", None)
+                if m_context is not None:
+                    w_count = simple_word_counter(m_context)
+                    if word_count_in_range(w_count):
+                        correct_counter += 1
+
+        if correct_counter == n_positions:
+            return True
+        return False
+
+    @staticmethod
+    def favourite_skills(aptitudes_column):
+
+        if aptitudes_column is None:
+            return False
+        
+        """Checks if favourite skills is in range(5, 8) both included"""
+        range_check = lambda count: count >= 5 and count <= 8
+
+        aptitudes = aptitudes_column.toPython()
+        n_aptitudes = len(aptitudes)
+
+        if n_aptitudes == 0:
+            return False
+
+        fav_counter = 0
+        for ap in aptitudes:
+            if ap.get("visibility", None) == "FAVOURITE":
+                fav_counter += 1
+
+        if range_check(fav_counter):
+            return True
+
+        return False
+
+    @staticmethod
+    def profile_updated(last_modified_date_column, snapshot_ts_column):
+
+        if last_modified_date_column is None:
+            return False
+        
+        """Returns True if the profile was updated within a year of the snapshot."""
+        lm = parse_date(str(last_modified_date_column), ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"])
+        sn = dt.datetime.strptime(str(snapshot_ts_column), "%Y-%m-%d")
+
+        delta = sn.date() - lm.date()
+        delta_days = delta.days
+
+        if delta_days <= 365:
+            return True
+        return False
+
+    @staticmethod
+    def position_fields_filled(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+        """Checks if all the positions have the mandatory fields filled."""
+        positions = profile_positions_col.toPython()
+
+        n_positions = len(positions)
+        if n_positions == 0:
+            return False
+
+        fields_filled_counter = 0
+        pos_counter = 0
+        mandatory_fields = ["title", "employerName", "address.city", "startDate", "description"]
+        for p in positions:
+            if not p.get("isMission", None):
+                continue
+            pos_counter += 1
+            conditions = list()
+            for f in mandatory_fields:
+                if p.get(f, None) is not None:
+                    if f == "address.city":
+                        if p.get(f).get("city", None) is not None:
+                            conditions.append(True)
+                    else:
+                        conditions.append(True)
+            if all(conditions):
+                fields_filled_counter += 1
+
+        if fields_filled_counter == pos_counter:
+            return True
+        
+        return False
+
+    @staticmethod
+    def assignment_fields_filled(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+        """Checks if all the assignments have the mandatory fields filled."""
+        positions = profile_positions_col.toPython()
+
+        n_positions = len(positions)
+        if n_positions == 0:
+            return False
+
+        fields_filled_counter = 0
+        pos_counter = 0
+        mandatory_fields = ["title", "employerName", "address.city", "startDate", "description"]
+        for p in positions:
+            if p.get("isMission", None):
+                continue
+            pos_counter += 1
+            conditions = list()
+            for f in mandatory_fields:
+                if p.get(f, None) is not None:
+                    if f == "address.city":
+                        if p.get(f).get("city", None) is not None:
+                            conditions.append(True)
+                    else:
+                        conditions.append(True)
+            if all(conditions):
+                fields_filled_counter += 1
+
+        if fields_filled_counter == pos_counter:
+            return True
+
+        return False
+
+    @staticmethod
+    def no_forbidden_words(profile_positions_col):
+
+        if profile_positions_col is None:
+            return False
+        
+
+        """Checks for forbidden words in the description"""
+        forbidden_words = ["context", "methods", "tools", "missions"]
+        positions = profile_positions_col.toPython()
+
+        n_positions = len(positions)
+        if n_positions == 0:
+            return False
+
+        forbidden_words_counter = 0
+        for p in positions:
+            if p.get("isMission", None) is None:
+                continue
+            elif p.get("isMission", None):
+                context = p.get("missionContext", None)
+                if context:
+                    words = [w.lower() for w in simple_word_extractor(context)]
+                    if any_in(words, forbidden_words):
+                        forbidden_words_counter += 1
+                else:
+                    forbidden_words_counter += 1
+            else:
+                desc = p.get("description", None)
+                if desc:
+                    words = simple_word_extractor(desc)
+                    if any_in(words, forbidden_words):
+                        forbidden_words_counter += 1
+                else:
+                    forbidden_words_counter += 1
+        return False
+
+    @staticmethod
+    def has_activity_area(aptitudes_column):
+
+        if aptitudes_column is None:
+            return False
+        
+        """Checks if there is an aptitude of type Activity Area"""
+
+        aptitudes = aptitudes_column.toPython()
+        n_aptitudes = len(aptitudes)
+
+        if n_aptitudes == 0:
+            return False
+
+        for ap in aptitudes:
+            if ap.get("type", None) == "ACTIVITY_AREA":
+                return True
+
+        return False
+
+    @staticmethod
+    def no_free_text_skills(aptitudes_column):
+
+        if aptitudes_column is None:
+            return False
+        
+        """Checks if there is an without conceptId"""
+
+        aptitudes = aptitudes_column.toPython()
+        n_aptitudes = len(aptitudes)
+
+        if n_aptitudes == 0:
+            return False
+
+        for ap in aptitudes:
+            if ap.get("conceptId", None) is None:
+                return False
+        return True
+    
+
+    @staticmethod
+    def proficiency_on_twenty_pct(aptitudes_column):
+
+        if aptitudes_column is None:
+            return False
+        
+        """Checks if at least 20% of aptitudes have a proficiency greater than 0"""
+
+        aptitudes = aptitudes_column.toPython()
+        n_aptitudes = len(aptitudes)
+
+        if n_aptitudes == 0:
+            return False
+
+        apt_gt0_count = 0
+        for ap in aptitudes:
+            if ap.get("proficiency", None):
+                if ap.get("proficiency", None) > 0:
+                    apt_gt0_count += 1
+
+        if apt_gt0_count/n_aptitudes >= 0.2:
+            return True
+        return False
+
+    @staticmethod
+    def all_skills_categorized(aptitudes_column):
+
+        if aptitudes_column is None:
+            return False
+        
+        """Checks if there is all aptitudes are not UNCLASSIFIED"""
+
+        aptitudes = aptitudes_column.toPython()
+        n_aptitudes = len(aptitudes)
+
+        if n_aptitudes == 0:
+            return False
+
+        for ap in aptitudes:
+            if ap.get("type", None) == "UNCLASSIFIED":
+                return False
+        return True
+
+    @staticmethod
+    def education_field_filled(educations_column):
+
+        if educations_column is None:
+            return False
+
+        """Checks if all educations have the mandatory fields."""
+
+        educations = educations_column.toPython()
+        n_educations = len(educations)
+
+        if n_educations == 0:
+            return False
+
+        mandatory_fields = ["degree", "school", "startDate", "endDate"]
+        for education in educations:
+            for f in mandatory_fields:
+                if not education.get(f, None):
+                    return False
+        return True
+
+    @staticmethod
+    def bio_word_count(headline_col):
+
+        if headline_col is None:
+            return False
+
+        range_check = lambda count: count >= 30 and count <= 150
+
+        headline = headline_col.toPython()
+
+        if headline.get("bio", None):
+            return range_check(simple_word_counter(headline.get("bio")))
+        return False
+
+    @staticmethod
+    def skills_linked_to_positions(aptitudes_col, positions_col):
+        """Checks if at least 20% of position skills are in profile skills."""
+        if aptitudes_col is None or positions_col is None:
+            return False
+        aptitudes = aptitudes_col.toPython()
+        positions = positions_col.toPython()
+
+        if len(aptitudes) == 0 or len(positions) == 0:
+            return False
+
+        ap_ids = [ap.get("id", None) for ap in aptitudes if ap.get("id", None) is not None]
+
+        positions_unique_skills = set()
+
+        for p in positions:
+            aps = p.get("aptitudeReferences", None)
+            if aps:
+                for ap in aps:
+                    ap_id = ap.get("aptitudeId", None)
+                    if ap_id:
+                        positions_unique_skills.add(ap_id)
+
+        pos_skill_counter = 0
+        for ap_id in positions_unique_skills:
+            if ap_id in ap_ids:
+                pos_skill_counter += 1
+
+        if pos_skill_counter/len(ap_ids) >= 0.2:
+            return True
+
+        return False
+
+    def add_profile_score(self, profile_df):
+        cm = self.conditions_map
+
+        ndf = profile_df
+        for k, v in cm.items():
+            f = F.udf(v["function"], ty.BooleanType())
+            ndf = ndf.withColumn(
+                f"{k}_{v['name']}",
+                f(
+                    *[F.col(con) for con in v["columns"]]
+                )
+            )
+
+        top_c = ["c1", "c2", "c3", "c4", "c5", "c6"]
+
+        top_priority_score = reduce(
+            lambda x, y: x+y,
+            [
+                F.coalesce(
+                    F.col(f"{cond}_{cm[cond]['name']}").cast("int"), 
+                    F.lit(0)
+                ) for cond in top_c
+            ]
+        )
+
+        weighted_score = reduce(
+            lambda x, y: x+y,
+            [
+                cm[cond]["weight"]*F.coalesce(
+                    F.col(f"{cond}_{cm[cond]['name']}").cast("int"), 
+                    F.lit(0)
+                ) for cond in cm.keys()
+            ]
+        )
+
+        raw_score = F.round((weighted_score / self.weight_sum)*100)
+
+        top_priority_multiplier = {
+            0: 0.1,
+            1: 0.4,
+            2: 0.55,
+            3: 0.7,
+            4: 0.82,
+            5: 0.92,
+            6: 1
+        }
+
+        top_priority_multiplier_map = F.create_map(
+            *[x for k,v in top_priority_multiplier.items() for x in (F.lit(k), F.lit(v))]
+        )
+
+        #score = F.round(raw_score*top_priority_multiplier_map[top_priority_score])
+        score = F.round(weighted_score)
+
+        ndf = ndf.withColumn(
+            "profileScore",
+            score
+        ).withColumn(
+            f"profileScore_Status",
+            F.when(F.col("profileScore") >= 60, "Completed")
+                .otherwise("Not completed")
+        ).withColumn(
+            "profile_OK",
+            F.when(
+                (
+                    (F.col("profileScore") >= 60)
+                    & (F.col("completionRate") >= 0.8)
+                ),
+                "Ok"
+            ).otherwise("Not Ok")
+        )
+
+        return ndf
+
+    # End of class
+
+
+def add_profile_score_f(profile_df):
+    return ProfileScoreNamespace().add_profile_score(profile_df)
+
+
+
+def extract_english_terms(sparkSession, skill_df, col):
+    "extracts the english term from the skill column"
+    exploded = explode_variant_list_column(sparkSession, skill_df, col)
+    exploded = exploded.drop(F.col(col), F.col("pos"), F.col("key"), F.col(col)).withColumnRenamed("value", col)
+    extracted = extract_variant_keys(exploded, col, {"language": "STRING", "text": "STRING"})
+    filtered = extracted.where(
+        (F.col(f"{col}_language") == "en")
+        | (F.col(f"{col}_language").isNull())
+    )
+    return filtered
+
+def extract_all_english_terms(sparkSession, skill_df):
+    ndf = skill_df
+    english_cols = ["name", "description", "terms", "hiddenTerms", "wikipediaLink", "depiction"]
+    for c in english_cols:
+        ndf = extract_english_terms(sparkSession, ndf, c)
+    return ndf
+
+
+def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode, keep_history = False):
+
+    l = left_df.alias(alias_left)
+    r = right_df.alias(alias_right)
+
+    l_cols = l.columns
+    r_cols = r.columns
+
+    left_cols = list()
+
+    for col in l_cols:
+        if col in r_cols:
+            left_cols.append(
+                l[col].alias(f"{alias_left}_{col}")
+            )
+        else:
+            left_cols.append(
+                l[col].alias(f"{col}")
+            )
+
+    
+    right_cols = list()
+
+    for col in r_cols:
+        if col in l_cols:
+            right_cols.append(
+                r[col].alias(f"{alias_right}_{col}")
+            )
+        else:
+            right_cols.append(
+                r[col].alias(f"{col}")
+            )
+
+
+    if keep_history:
+        join_on_cond = (join_on_cond
+                        & (left_df[SNAPSHOT_COL] == right_df[SNAPSHOT_COL])
+        )
+    ndf = l.join(
+        r,
+        join_on_cond,
+        how=how_mode
+    ).select(
+        *left_cols,
+        *right_cols
+    )
+
+    if keep_history:
+        ndf = ndf.drop(f"{alias_right}_{SNAPSHOT_COL}")
+        ndf = ndf.withColumnRenamed(f"{alias_left}_{SNAPSHOT_COL}", SNAPSHOT_COL)
+
+    return ndf
+
+
+_quarantine_sanitize_created = False
+
+def create_quarantine_table_sanitize(spark, catalog):
+    """Creates the streaming table that will hold the data that needs to be sanitize. Only creates it once."""
+    global _quarantine_sanitize_created
+    if _quarantine_sanitize_created:
+        return None
+    _quarantine_sanitize_created = True
+    quarantine_schema = get_quarantine_schema(spark)
+    quarantine_table = get_quarantine_table(spark, "sanitize")
+
+    dp.create_streaming_table(
+        name=f"{catalog}.{quarantine_schema}.{quarantine_table}",
+        comment="Quarantine table. Holds error rows."
+    )
+    return None
+
+
+def max_filter(df, pk_cols, col_to_select):
+
+    if not isinstance(pk_cols, (str, list)):
+        raise TypeError("pk_cols must be a list or str")
+
+    if not isinstance(col_to_select, str):
+        raise TypeError("col_to_select must be a str.")
+
+    if isinstance(pk_cols, str):
+        pk_cols = [pk_cols]
+
+    if not all(c in df.columns for c in pk_cols) or col_to_select not in df.columns:
+        raise ValueError("pk_cols and col_to_select must be in df columns.")
+    """
+    cols = [c for c in df.columns if c not in pk_cols]
+
+    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias(f"max_{col_to_select}"))
+
+    ndf = custom_join(ndf, max_df, "og", "max", "left")
+
+    c_to_drop = list()
+    for pk in pk_cols:
+        ndf = ndf.withColumnRenamed(f"og_{pk}", pk)
+        c_to_drop.append(f"max_{pk}")
+
+    ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
+    ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
+    """
+    window = Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
+
+    ndf = (
+        df.withColumn("rn", F.row_number().over(w))
+        .filter(F.col("rn") == 1)   # 1 = top row of each partition; use 2, 3... for others
+        .drop("rn")
+    )
+    
+    return ndf
+
+
+def make_department_service_line_zones(sparkSession, department_df, service_line_df):
+    dep_sl = explode_variant_list_column(sparkSession, department_df, "associated_service_line", False, True)
+    dep_sl_zone = explode_variant_list_column(sparkSession, dep_sl, "associated_zone", False, True).withColumn("associated_service_line", F.col("associated_service_line").cast("int")).withColumn("associated_zone", F.col("associated_zone").cast("int"))
+
+    sl_dep = explode_variant_list_column(sparkSession, service_line_df, "associated_practice", False, True)
+    sl_dep_zone = explode_variant_list_column(sparkSession, sl_dep, "associated_zone", False, True).withColumn("associated_practice", F.col("associated_practice").cast("int")).withColumn("associated_zone", F.col("associated_zone").cast("int"))
+
+    ndf = custom_join(
+        dep_sl_zone,
+        sl_dep_zone,
+        "department", "service_line",
+        (
+            (dep_sl_zone["associated_zone"] == sl_dep_zone["associated_zone"])
+            & (dep_sl_zone["associated_service_line"] == sl_dep_zone["id"])
+            & (dep_sl_zone["id"] == sl_dep_zone["associated_practice"])
+        ),
+        "inner"
+    )
+
+    zone_names = spark.read.csv(get_conf(spark, "file.encode.zone_map"),
+                                header=True,
+                                inferSchema=True)
+    bucu_dep_map = spark.read.csv(get_conf(spark, "file.encode.department_bucu"),
+                                header=True,
+                                inferSchema=True)
+    dep_zone_map = spark.read.csv(get_conf(spark, "file.encode.department_zone_map"),
+                                header=True,
+                                inferSchema=True)
+
+    ndf = custom_join(
+        ndf, zone_names,
+        "d_sl_z", "zone_map",
+        ndf["department_associated_zone"] == zone_names["id"],
+        "left"
+    )
+
+    ndf = custom_join(
+        ndf, bucu_dep_map,
+        "d_sl_z_2", "bucu",
+        ndf["department_name"] == bucu_dep_map["practiceName"],
+        "left"
+    )
+
+    ndf = ndf.fillna({"BUCU": "BU"})
+
+    ndf = custom_join(
+        ndf, dep_zone_map,
+        "d_sl_z_3", "dz",
+        ndf["department_name"] == dep_zone_map["department_name"],
+        "left"
+    )
+
+    return ndf
+
+
+def map_site(sparkSession, site_df):
+
+    site_maps = spark.read.csv(get_conf(sparkSession, "file.encode.site_maps"),
+                                header=True,
+                                inferSchema=True)
+
+    ndf = custom_join(site_df, site_maps, "site", "site_map", site_df["name"]==site_maps["site_name"], "left")
+
+    ndf = ndf.withColumn("id", F.col("id").cast("int"))
+    ndf = ndf.withColumn("active", F.col("active").cast("int"))
+    return ndf
+
+
+def add_is_active_col(df, end_date_col, is_active_col_name="is_active"):
+    ndf = df.withColumn(
+        is_active_col_name,
+        F.when(
+            F.col(end_date_col).isNull(),
+            F.lit(False)
+        ).otherwise(
+            F.current_date() > F.col(end_date_col)
+        )
+    )
+    return ndf
+
+
+def trim_str_cols(df):
+    for field in df.schema:
+        if isinstance(field.dataType, ty.StringType):
+            df = df.withColumn(field.name, F.trim(F.col(field.name)))
+    return df
+
+
+def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
+
+    pp_df = profile_positions_df.where("is_mission = TRUE")
+
+    last_pos_date = pp_df.groupBy("profile_id").agg(F.max("startDate").alias("last_date")).withColumnRenamed("profile_id", "pp_df")
+    pp_df = pp_df.join(last_pos_date, pp_df["profile_id"] == last_pos_date["pp_df"], "left").drop("pp_df")
+
+
+    pp_df = pp_df.where("startDate = last_date").drop("last_date")
+
+    pp_count = pp_df.groupBy("profile_id").count().withColumnRenamed("profile_id", "c_profile_id")
+    pp_df = pp_df.join(pp_count, pp_df["profile_id"] == pp_count["c_profile_id"], "left").drop("c_profile_id")
+
+    g1 = pp_df.where("count = 1")
+    g2 = pp_df.where("count > 1")
+
+    g3 = g2.where("endDate IS NULL")
+    g4 = g2.where("endDate IS NOT NULL").join(g3.select("profile_id"), on="profile_id", how="left_anti")
+
+    last_end_date = g4.groupBy("profile_id").agg(F.max("endDate").alias("last_end_date")).withColumnRenamed("profile_id", "l_profile_id")
+    g4 = g4.join(last_end_date, g4["profile_id"]==last_end_date["l_profile_id"], "left").drop("l_profile_id")
+    g4 = g4.where("endDate = last_end_date").drop("last_end_date")
+
+    final = g1.unionByName(g3).unionByName(g4)
+    
+    pp_df = final.select("profile_id", "title", "startDate")
+
+
+    ndf = custom_join(profile_df, pp_df, "profile", "pp", profile_df["id"] == pp_df["profile_id"], "left")
+    ndf = ndf.drop("profile_id")
+    ndf = ndf.withColumnRenamed("startDate", "last_mission_start_date")
+    ndf = ndf.withColumnRenamed("title", "last_mission_title")
+
+    return ndf
+
+
+
+
+
+def dim_organization_extra_columns(sparkSession, dim_org_df):
+
+    slf = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_name_family"),
+        header=True,
+        inferSchema=True)
+    
+    expr = None
+    for row in slf.select("ServiceLineName_contains", "Family").collect():
+        if expr is None:
+            expr = F.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+        else:
+            expr = expr.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
+    expr = expr.otherwise("Other")
+    ndf = dim_org_df.withColumn(
+        "family",
+        expr
+    )
+    
+    slm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_zone_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr2 = None
+    for row in slm.select("Zone", "Family", "Manager").collect():
+        if expr2 is None:
+            expr2 = F.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+        else:
+            expr2 = expr2.when(
+                (
+                    (F.col("zone_name") == row["Zone"])
+                    & (F.col("family") == row["Family"]) 
+                ), row["Manager"]
+            )
+    expr2 = expr2.otherwise(None)
+    ndf = ndf.withColumn(
+        "service_line_manager",
+        expr2
+    )
+
+
+    zpr = spark.read.csv(
+        get_conf(sparkSession, "file.encode.zone_practice_region"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr3 = None
+    for row in zpr.select("Zone", "service_line_contains", "Region").collect():
+        if row["service_line_contains"] is None:
+            constraint = (
+                (F.col("zone_name") == row["Zone"])
+                & (F.col("service_line_name").contains(row["service_line_contains"]))
+            )
+        else:
+            constraint = F.col("zone_name") == row["Zone"]
+
+        if expr3 is None:
+            expr3 = F.when(constraint, row["Region"])
+        else:
+            expr3 = expr3.when(constraint, row["Region"])
+    expr3 = expr3.otherwise(None)
+
+    ndf = ndf.withColumn(
+        "region",
+        expr3
+    )
+
+    rpm = spark.read.csv(
+        get_conf(sparkSession, "file.encode.region_practice_manager"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr4 = None
+    for row in rpm.select("Region", "Practice_contains", "PracticeManager").collect():
+        if expr4 is None:
+            expr4 = F.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+        else:
+            expr4 = expr4.when(
+                (
+                    (F.col("region") == row["Region"])
+                    & (F.col("department_name").contains("Practice_contains"))
+                ), row["PracticeManager"]
+            )
+    expr4 = expr4.otherwise(None)
+
+
+    ndf = ndf.withColumn(
+        "practice_manager",
+        expr4
+    )
+
+
+    return ndf
+
+def drop_variant_cols(df):
+    cols_to_drop = list()
+    for col in df.columns:
+        if isinstance(df.schema[ccol].dataType, (ty.VariantType, ty.StructType)):
+            cols_to_drop.append(ccol)
+    ndf = df.drop(*cols_to_drop)
+    return ndf
+
+
+def get_matching_cols(df1, df2):
+    c1 = set(df1.columns)
+    c2 = set(df2.columns)
+
+    matching_cols = c1.intersection(c2)
+    return matching_cols
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# raw_reader.py
+
+
+
+import pyspark.pipelines as dp
+import pyspark.sql.functions as F
+from pathlib import Path
+import pyspark.sql.types as ty
+# import common.utils as ut
+
+
+class RawReader(): # Hardcoded everywhere cause imports dont work
+
+    @staticmethod
+    def volume_path_maker(catalog: str, read_schema: str, volume_name: str):
+        return Path(f"/Volumes/{catalog}/{read_schema}/{volume_name}/")
+
+    @staticmethod
+    def get_date_and_error(file_name: str):
+        """
+        Extracts the snapshot date if possible and an error description if it is not.
+
+        Returns a tuple, first value is date or None, second is a string or None.
+        """
+
+        if not isinstance(file_name, str):
+            return (None, "File name is not a string.")
+
+        # Files are expected to have snapshot in the next format YYYY-MM-DD_file_name
+        # We extract the first 10 character that are suppose to have a date.
+
+        if len(file_name) < 11:
+            return (None, "Date not provided.")
+
+        date_str = file_name[:12]
+
+        validity_count = 0
+        n_chars = 11
+        for i in range(n_chars + 1):
+            char = date_str[i]
+            if i in [4, 7]:
+                if char != "-":
+                    continue
+            elif i == 11:
+                if char != "_":
+                    continue
+            else:
+                try:
+                    int(char)
+                except ValueError:
+                    continue
+            validity_count += 1
+
+        if validity_count == n_chars:
+            return (date_str[:10], None)
+        elif validity_count < 12 and validity_count > 8:
+            return (None, "Invalid date.")
+        else:
+            return (None, "Date not provided.")
+        return None
+
+    
+    @staticmethod
+    def raw_json_reader(sparkSession,
+                        volume_path: str,
+                        glob_regex: str,
+                        streaming: bool = True):
+        
+        """Reads from volume expecting a list of jsons, 
+        
+        Returns a table with load metadata and a column named payload.
+        
+        The streaming table, considers a new input when a new file arrives.
+        Does not bother checking changes.
+        """
+
+
+        if streaming:
+            reader = sparkSession.readStream\
+                                .format("cloudFiles")\
+                                .option("cloudFiles.format", "json")\
+            # No need to give spark permission to infer schema because,
+            # we store the data as payload and we do it manually since spark's is not enough
+        else:
+            reader = sparkSession.read.format("json")
+
+        df = reader.option("multiLine", "true")\
+                    .option("singleVariantColumn", "payload")\
+                    .option("pathGlobFilter", glob_regex)\
+                    .load(str(volume_path))\
+                    .select(
+                        "payload",
+                        F.col("_metadata.file_path").alias("_source_file"),
+                        F.col("_metadata.file_name").alias("_source_file_name"),
+                        F.col("_metadata.file_size").alias("_source_file_size"),
+                        F.col("_metadata.file_modification_time").alias("_source_file_modified_at"),
+                    )
+        df = explode_variant_list_column(sparkSession, df, "payload", remove_row_if_empty_list=True).select(
+                        F.col("value").alias("payload"),
+                        "_source_file",
+                        "_source_file_name",
+                        "_source_file_size",
+                        "_source_file_modified_at",
+                    )
+
+        # We add the snapshot date and the error if any as a column
+        schema = ty.StructType([
+            ty.StructField("date", ty.StringType(), True),
+            ty.StructField("file_name_error", ty.StringType(), True),
+        ])
+        get_date = F.udf(RawReader.get_date_and_error, schema)
+        df = (
+            df
+            .withColumn("resultado", get_date(F.col("_source_file_name")))
+            .withColumn("snapshot_ts", F.to_date("resultado.date", "yyyy-MM-dd"))
+            .withColumn("file_name_error", F.col("resultado.file_name_error"))
+            .withColumn("ingest_ts", F.current_timestamp())
+            .drop("resultado")
+        )
+
+
+        return df
+
+def raw_bronze_pipe_maker(spark, catalog, platform, table_name, streaming=False):
+
+    platform_name = get_platform(spark, platform)
+    target_quality = get_quality(spark, "bronze")
+
+    target_schema = schema_name_builder(target_quality, platform_name)
+    target_table = table_name_builder("raw", table_name)
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+    read_volume = get_table_volume(spark, "data", platform, table_name)
+
+    files_glob_regex = get_table_glob_regex(spark, platform, table_name)
+
+
+    @dp.table(
+        name = target_path,
+        comment=(
+            f"Raw {table_name}. Read from its JSON and loaded as payload column with metadata columns, aswell as snapshot date added."
+        ),
+        table_properties={
+            "quality": target_quality
+        }
+    )
+    def f():
+        return RawReader.raw_json_reader(spark, read_volume, files_glob_regex, streaming)
+
+
+    """
+    # We add the error derivation to quarantine table
+    quarantine_schema = get_quarantine_schema(spark)
+    quarantine_table = get_quarantine_table(spark, "files")
+    quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+    @dp.append_flow(
+        target=quarantine_path,
+        name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.', '_')}"
+    )
+    def f2():
+        quarantine_df = spark.readStream.table(target_path).where(F.col("snapshot_ts").isNull()).select(
+            "_source_file",
+            "_source_file_name",
+            "snapshot_ts",
+            "file_name_error"
+        )
+        return quarantine_df
+    """
+    
+    return None
+
+
+def create_quarantine_table(spark, catalog):
+    """Needs to be called before pipe maker. Creates the streaming table"""
+    quarantine_schema = get_quarantine_schema(spark)
+    quarantine_table = get_quarantine_table(spark, "files")
+
+    dp.create_streaming_table(
+        name=f"{catalog}.{quarantine_schema}.{quarantine_table}",
+        comment="Quarantine table. Holds error in file names."
+    )
+    return None
+
+
+# payload_to_table.py
+
+
+
+import pyspark.pipelines as dp
+import pyspark.sql.functions as F
+import pyspark.sql.types as ty
+# import common.utils as ut
+# import common.constants as c
+from pathlib import Path
+# This file has all the functions neccessary to translate a payload variant column from raw table into a bronze table.
+
+#import cloudpickle
+#cloudpickle.register_pickle_by_value(sys.modules[__name__])
+
+
+def payload_subset_expr_string_maker(variant_col_name, cols_to_select):
+    expr_string = "object_construct("
+    n_cols = len(cols_to_select)
+    for i, col in enumerate(cols_to_select):
+        if i+1 == n_cols:
+            end_str = ""
+        else:
+            end_str = ","
+        expr_string = expr_string + f"'{col}', {variant_col_name}:{col}{end_str}"
+
+    expr_string = expr_string + ")"
+    return expr_string
+
+
+def parse_data_type(dt_):
+    if dt_ == "DATE":
+        return "STRING"
+    return dt_
+
+@F.udf(returnType=ty.ArrayType(ty.StringType()))
+def get_variant_keys(variant):
+    if variant is None:
+        return None
+
+    value = variant.toPython()
+
+    if isinstance(value, dict):
+        return list(value.keys())
+
+    return list()
+
+
+def transform_payload_to_table(og_df, known_schema, metadata_cols):
+    """
+    Takes the og_df that is meant to have only payload column and metadata.
+
+    Takes known_schema that is a dict with the shape (column: {type: str, format: str})
+
+    Selects the known schema columns and transform it to columns, and the remaining payload json is kept in the column remaining_payload
+    """
+    cols = list()
+
+    for field_name, data_type in known_schema.items():
+        if data_type["type"] == "VARIANT":
+            col = (
+                F.parse_json(F.expr(f"variant_get(payload, '$.{field_name}', 'string')"))
+                .cast(parse_data_type(data_type["type"]))
+                .alias(field_name)
+            )
+        else:
+            col = (
+                F.expr(f"variant_get(payload, '$.{field_name}', 'string')")
+                .cast(parse_data_type(data_type["type"]))
+                .alias(field_name)
+            )
+        cols.append(col)
+        """
+        if data_type["type"] == "VARIANT":
+            col2 = (
+                F.expr(f"xxhash64(variant_get(payload, '$.{field_name}', 'string'))")
+                .cast(parse_data_type("STRING"))
+                .alias(f"hash_{field_name}")
+            )
+            cols.append(col2)
+        """
+
+    cols.extend(metadata_cols)
+    cols.append(SNAPSHOT_COL)
+    cols.append(INGEST_TS_COL)
+
+    df = og_df.withColumn(
+            "remaining_keys",
+            F.array_except(
+                get_variant_keys("payload"),
+                F.array(*[F.lit(k) for k in known_schema.keys()])
+            )
+        ).withColumn(
+            "remaining_payload",
+            F.expr("""
+                to_variant_object(
+                    map_from_arrays(
+                        transform(
+                            remaining_keys,
+                            k -> k
+                        ),
+                        transform(
+                            remaining_keys,
+                            k -> variant_get(payload, '$.k', 'string')
+                        )
+                    )
+                )
+            """)
+        )
+
+    cols.append("remaining_payload")
+    return df.select(*cols)
+
+
+
+
+def payload_top_level_to_table_pipe_maker(spark, catalog, platform, table_name):
+
+    platform_name = get_platform(spark, platform)
+    target_quality = get_quality(spark, "bronze")
+    target_schema = schema_name_builder(target_quality, platform_name)
+
+    read_table = table_name_builder("raw", table_name)
+    target_table = table_name_builder("base", table_name)
+    read_path = f"{catalog}.{target_schema}.{read_table}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+    known_schema_vol = get_table_volume(spark, "schema", platform, table_name)
+    known_schema_file = get_table_metadata_files(spark, "schema", platform, table_name)
+    known_schema_path = Path(known_schema_vol) / Path(known_schema_file)
+
+    known_latest_snapshot = load_json(get_conf(spark, "file.latest_snapshot")).get(platform).get(table_name)
+
+    @dp.table(
+        name=target_path,
+        comment=f"Base Bronze {table_name}. Contains the top level payload keys as columns and formatted when possible.",
+        table_properties={
+            "quality":target_quality
+        }
+    )
+    def f():
+        df = spark.readStream.table(read_path)
+        known_schema = load_json(known_schema_path)
+        metadata_cols = METADATA_COLUMNS
+        if table_name == "profile":
+            ndf = add_bucket_and_status(
+                add_profile_score_f(
+                    transform_payload_to_table(df, known_schema, metadata_cols)
+                ), 
+                "completionRate").withColumn(KNOWN_SNAPSHOT, F.lit(known_latest_snapshot))
+            return ndf
+        ndf = transform_payload_to_table(df, known_schema, metadata_cols).withColumn(KNOWN_SNAPSHOT, F.lit(known_latest_snapshot))
+        return ndf
+
+    return None
+
+
+# snapshot_processor.py
+
+
+
+import pyspark.sql as sql
+import pyspark.sql.functions as F
+import pyspark.pipelines as dp
+# import common.constants as c
+# import common.utils as ut
+from pathlib import Path
+
+def remove_hashed_cols(list_of_cols):
+    "variant cols have a hash equivalent, the variant cols cant be accounted for when using dropDuplicates, so we remove those cols from the subset of cols to dropDuplicates"
+
+    cols_with_hash = list()
+    for c in list_of_cols:
+        if startswith("hash_"):
+            cols_with_hash.append(c[len("hash_"):])
+
+    cols = [c for c in list_of_cols if c not in cols_with_hash]
+
+    return cols
+
+
+
+
+def last_snapshot_filter(snapshot_df, partition_cols, extra_cols_to_skip=None):
+
+    # Extra cols to skip, cols that dont want to include in subset during dropDuplicates
+    snapshot_ts_col = SNAPSHOT_COL
+    # First we drop duplicates on all columns except the snapshot_dates one
+    cols = snapshot_df.columns
+
+    if extra_cols_to_skip is None:
+        extra_cols_to_skip = list()
+
+    if not isinstance(extra_cols_to_skip, list):
+        raise TypeError("extra cols must be a list.")
+
+    if not isinstance(partition_cols, (str, list)):
+        raise TypeError("partition cols must be a list or a str")
+
+    if isinstance(partition_cols, str):
+        partition_cols = [partition_cols]
+
+    if not all_in(partition_cols, cols):
+        raise ValueError(f"partition columns ({partition_cols}, {cols}) are not in columns.")
+
+    if snapshot_ts_col not in cols:
+        raise ValueError(f"snapshot timestamp column ({snapshot_ts_col}) is not in columns.")
+
+    
+    cols_without_snapshot_ts = [c for c in cols if c != snapshot_ts_col and c not in extra_cols_to_skip]
+
+    newdf = snapshot_df.dropDuplicates(subset=remove_hashed_cols(cols_without_snapshot_ts))
+
+    window = sql.Window.partitionBy(*partition_cols).orderBy(snapshot_ts_col)
+
+    newdf = newdf.withColumn(
+        "last_snapshot",
+        F.max(
+            F.col(snapshot_ts_col)
+        ).over(window)
+    ).withColumn(
+        "row_number", 
+        F.row_number().over(window)
+    ).filter(
+        (F.col(snapshot_ts_col) == F.col("last_snapshot"))
+        & (F.col("row_number") == 1) # We choose 1 cause it should not matter if it is the first or last, and we won't bother calculating the last
+    ).drop("row_number").drop("last_snapshot")
+    
+
+
+    return newdf
+
+
+def history_table_maker(snapshot_df, cols_to_keep, dates_filter_expr, history_extra_constraints):
+
+    cols = snapshot_df.columns
+
+    ndf = snapshot_df
+    if history_extra_constraints is not None:
+        if not isinstance(history_extra_constraints, list):
+            raise TypeError("history_extra_constraints must be a list of sql constraints")
+        for con in history_extra_constraints:
+            ndf = ndf.where(con)
+
+    if not isinstance(cols_to_keep, list):
+        raise ValueError("columns to keep must be a list.")
+
+    if not all_in(cols_to_keep, cols):
+        raise ValueError(f"cols to keep ({cols_to_keep}, {cols}) are not in columns.")
+
+    cols_to_keep_2 = list(cols_to_keep)
+    cols_to_keep_2.append(SNAPSHOT_COL)
+    ndf = ndf.where(dates_filter_expr.replace("snapshot_ts", SNAPSHOT_COL).replace("latest_snapshot_date", KNOWN_SNAPSHOT)).select(*cols_to_keep_2)
+
+    return ndf
+
+
+def to_list(val):
+    if isinstance(val, list):
+        return val
+    return [val]
+
+
+def create_latest_batch_stream(
+    source_table: str,
+    target_table: str,
+    checkpoint_path: str
+):
+    source_df = spark.readStream.table(source_table)
+
+    def process_batch(batch_df, batch_id):
+        (
+            batch_df.write
+                .format("delta")
+                .mode("overwrite")
+                .option("overwriteSchema", "true")
+                .saveAsTable(target_table)
+        )
+
+    return (
+        source_df.writeStream
+            .foreachBatch(process_batch)
+            .option("checkpointLocation", checkpoint_path)
+            .start()
+    )
+
+
+def snapshot_pipe_maker(spark, catalog, platform, table_name):
+
+    platform_name = get_platform(spark, platform)
+    target_quality = get_quality(spark, "bronze")
+    target_schema = schema_name_builder(target_quality, platform_name)
+
+    read_table = table_name_builder("base", table_name)
+    current_table = table_name_builder("current", table_name)
+    history_table = table_name_builder("history", table_name)
+    read_path = f"{catalog}.{target_schema}.{read_table}"
+    current_table_path = f"{catalog}.{target_schema}.{current_table}"
+    history_table_path = f"{catalog}.{target_schema}.{history_table}"
+
+    dates_filter_expr = get_conf(spark, "history.filter_expression")
+
+    default_config_file_name = get_conf(spark, "file.default_config")
+    table_config_file_name = get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+    default_config_path = Path(table_config_volume) / default_config_file_name
+    table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
+    default_config = load_json(default_config_path)
+
+
+    """
+    dp.create_streaming_table(
+        name=current_table_path,
+        comment=f"Last snapshot {table_name} data.",
+        table_properties={
+            "quality": target_quality
+        },
+        expect_all_or_drop={"not_null_snapshot_date": f"{SNAPSHOT_COL} IS NOT NULL"}
+    )
+    dp.create_auto_cdc_flow(
+        target=current_table_path,
+        source=read_path,
+        keys=to_list(table_config.get("last_snapshot", default_config["last_snapshot"])["partition_cols"]),
+        sequence_by=SNAPSHOT_COL
+    )
+    """
+
+    """
+    @dp.materialized_view(
+        name=current_table_path,
+        comment=f"Last snapshot {table_name} data.",
+        table_properties={
+            "quality": target_quality
+        }
+    )
+    @dp.expect_or_drop("not_null_snapshot_date", f"{SNAPSHOT_COL} IS NOT NULL")
+    def f():
+        df = spark.readStream.table(read_path).where(f"{SNAPSHOT_COL} IS NOT NULL")
+        current_df = max_filter(
+            df, 
+            table_config.get("last_snapshot", default_config["last_snapshot"]).get("partition_cols"), 
+            SNAPSHOT_COL,
+            current_table_path.replace(".","_"))
+        return current_df
+    """
+    
+    @dp.table(
+        name=current_table_path,
+        comment=f"Last snapshot {table_name} data.",
+        table_properties={
+            "quality": target_quality
+        }
+    )
+    @dp.expect_or_drop("not_null_snapshot_date", f"{SNAPSHOT_COL} IS NOT NULL")
+    def f():
+        t_name = f"{catalog}.{platform}.{table_name}_temp"
+        df = spark.readStream.table(read_path).where(f"{SNAPSHOT_COL} IS NOT NULL")#.createOrReplaceTempView(t_name)
+        """current_df = spark.sql(f'''
+        SELECT * FROM {t_name} AS t WHERE t.{SNAPSHOT_COL} > t.{KNOWN_SNAPSHOT} OR (
+            t.{SNAPSHOT_COL} = t.{KNOWN_SNAPSHOT}
+            AND NOT EXISTS (
+                SELECT 1
+                FROM {t_name} AS t2
+                WHERE t2.{SNAPSHOT_COL} > t2.{KNOWN_SNAPSHOT}
+        );
+        
+        ''')"""
+        
+        return df.where(f"{SNAPSHOT_COL} = {KNOWN_SNAPSHOT}") # Since the job is executed before the pipeline, it will always have the latest date stored, assuming the date in the file name is correct.
+    
+    """
+    def process_batch(batch_df, batch_id):
+        batch_df = batch_df.filter(
+            f"{SNAPSHOT_COL} IS NOT NULL"
+        )
+
+        batch_df.createOrReplaceTempView("current_batch")
+
+        current_df = spark.sql(f'''
+            SELECT *
+            FROM current_batch AS t
+            WHERE t.{SNAPSHOT_COL} > t.{KNOWN_SNAPSHOT}
+                OR (
+                    t.{SNAPSHOT_COL} = t.{KNOWN_SNAPSHOT}
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM current_batch AS t2
+                        WHERE t2.{SNAPSHOT_COL} > t2.{KNOWN_SNAPSHOT}
+                    )
+                )
+        ''')
+        # Aquí haces el write/merge que corresponda
+        current_df.write.mode("append").saveAsTable(target_table)
+        return None
+
+    query = (
+        spark.readStream
+            .table(read_path)
+            .writeStream
+            .foreachBatch(process_batch)
+            .option("checkpointLocation", checkpoint_path)
+            .start()
+    )
+    """
+    #create_latest_batch_stream(read_path, current_table_path, "/Volumes/oxygen_dev/landing/source/_checkpoints_write/")
+
+    if table_config.get("history", None) is not None:
+        history_prev_filters = table_config.get("history").get("history_extra_constraints", None)
+        @dp.table(
+            name=history_table_path,
+            comment=f"Required time series {table_name} data.",
+            table_properties={
+                "quality": target_quality
+            }
+        )
+        @dp.expect_or_drop("not_null_snapshot_date", f"{SNAPSHOT_COL} IS NOT NULL")
+        def f2():
+            df = spark.readStream.table(read_path)
+            history_df = history_table_maker(df, table_config["history"]["cols_to_keep"], dates_filter_expr, history_prev_filters)
+            return history_df
+
+    return None
+
+
+# basic_filtering_and_quarantine.py
+
+
+
+import pyspark.sql as sql
+import pyspark.sql.functions as F
+import pyspark.pipelines as dp
+# import common.utils as ut
+# import common.constants as c
+from pathlib import Path
+
+
+
+# For silver accreditation we just need to extract the  aptitudes (skills) and ensure some quality.
+
+def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
+    
+    def f():
+        df = sparkSession.readStream.table(read_path)
+        return middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
+    return f
+
+
+def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table_config, add_snapshot_col=False):
+
+    middle_table = middle_table_config
+    if middle_table is not None:
+        pks = middle_table.get("pks", None)
+        cols_to_extract = middle_table.get("cols_to_extract", None)
+        new_pk_names = middle_table.get("pk_new_names", None)
+        extracted_cols_names = middle_table.get("extracted_cols_names", None)
+        variant_paths = middle_table.get("variant_paths", None)
+
+
+        if None in [pks, cols_to_extract, new_pk_names, extracted_cols_names]:
+            raise ValueError("Missing any of these keys: pks, col_to_extract, pk_new_names, extracted_col_name, extraction_name")
+
+        if add_snapshot_col:
+            pks.append(SNAPSHOT_COL)
+        if isinstance(cols_to_extract, list):
+            extraction_names = middle_table.get("extraction_names", None)
+            if extraction_names is None:
+                raise ValueError("extraction_names is missing")
+            
+            if (not isinstance(extracted_cols_names, list) 
+                or not (isinstance(variant_paths, list) or variant_paths is None)
+                or not isinstance(extraction_names, list)
+                ):
+                raise TypeError("If there are multiple cols_to_extract, extracted_cols_names, varian_paths (if provided) and extraction_name must be a list, each one referring to their respective column_to_extract")
+            c1 = len(cols_to_extract) != len(extracted_cols_names)
+            c2 = len(cols_to_extract) != len(extraction_names)
+            c3 = False
+            if variant_paths is not None:
+                c3 = len(cols_to_extract) != len(variant_paths)
+
+            if (c1 or c2 or c3):
+                raise ValueError("Len of cols_to_extract, extracted_cols_names and variant_paths (if provided) must match if cols_to_extract is a list.")
+            
+            for i, col_to_extract in enumerate(cols_to_extract):
+                extraction_name = extraction_names[i]
+                middle_table_name = f"{table_name}_{extraction_name}"
+                middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+                if variant_paths is None:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], None)
+                    )
+                else:
+                    dp.table(
+                        name=middle_table_path,
+                        comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                        table_properties={
+                            "quality": target_quality
+                        }
+                    )(
+                        mid_table_factory(spark, read_path, pks, col_to_extract, new_pk_names, extracted_cols_names[i], variant_paths[i])
+                    )
+        else:
+            extraction_name = middle_table.get("extraction_names", None)
+            middle_table_name = f"{table_name}_{extraction_name}"
+            middle_table_path = f"{catalog}.{target_schema}.{middle_table_name}"
+
+            @dp.table(
+                name=middle_table_path,
+                comment=f"Multi-valued attribute from {table_name}, attribute {extraction_name}",
+                table_properties={
+                    "quality": target_quality
+                }
+            )
+            def f3():
+                df = spark.readStream.table(read_path)
+                return middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
+    return None
+
+
+
+
+
+def silver_quality_pipe_maker(spark, catalog, platform, table_name):
+    # Como en la fase silver evitamos agregaciones, extraemos la tabla que contiene la relación, accreditación, profile, skill
+
+    platform_name = get_platform(spark, platform)
+
+    read_quality = get_quality(spark, "bronze")
+    read_schema = schema_name_builder(read_quality, platform_name)
+    target_quality = get_quality(spark, "silver")
+    target_schema = schema_name_builder(target_quality, platform_name)
+
+    read_table = table_name_builder("current", table_name)
+    target_table = table_name_builder("cleaned", table_name)
+    read_path = f"{catalog}.{read_schema}.{read_table}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+
+    default_config_file_name = get_conf(spark, "file.default_config")
+    table_config_file_name = get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+    default_config_path = Path(table_config_volume) / default_config_file_name
+    table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
+    silver_config = table_config.get("silver", None)
+
+    if silver_config is not None:
+        cols_to_drop = silver_config.get("cols_to_drop", None)
+        drop_metadata = silver_config.get("drop_metadata", True)
+        filter_queries = silver_config.get("constraints", None)
+        variant_keys_to_extract = silver_config.get("variant_keys_to_extract", None)
+        quarantine_queries = silver_config.get("quarantine", None)
+        middle_table = silver_config.get("middle_table", None)
+        pk_cols = silver_config.get("pk_cols", None)
+
+
+        @dp.table(
+            name=target_path,
+            comment=f"{table_name} cleaned and filtered data.",
+            table_properties={
+                "quality": target_quality
+            }
+        )
+        def f():
+            df = spark.readStream.table(read_path)
+            if variant_keys_to_extract is not None:
+                if not isinstance(variant_keys_to_extract, dict):
+                    raise TypeError("variant keys to extract must be a dict. Col: Dict[key, format]")
+                for col, keys_format in variant_keys_to_extract.items():
+                    df = extract_variant_keys(df, col, keys_format)
+                
+            if filter_queries is not None:
+                df = filter_conditions(df, filter_queries)
+
+            if cols_to_drop is not None:
+                df = remove_cols(df, cols_to_drop, drop_metadata)
+
+            df = trim_str_cols(df)
+
+            if table_name == "talent":
+                df = add_seniority(df, "yearsOfExperience")
+                df = add_date_status(df, "lastConnectionDate")
+
+            #if table_name == "profile":
+                #df = add_bucket_and_status(df, "completionRate")
+
+            if table_name == "collab_status":
+                df = classify_status_code(spark, df, "status")
+
+            if table_name == "skill":
+                df = extract_all_english_terms(spark, df)
+
+            if table_name == "profile":
+                df = add_date_status_prof(df, "lastModifiedDate")
+
+            if table_name in ["certification"]:
+                df = add_is_active_col(df, "endDate")
+
+            return df
+
+        if quarantine_queries is not None:
+            create_quarantine_table_sanitize(spark, catalog)
+            quarantine_schema = get_quarantine_schema(spark)
+            quarantine_table = get_quarantine_table(spark, "sanitize")
+            quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+            if pk_cols is None:
+                raise ValueError("PK Columns must be provided in table quality config. It is missing in the json file.")
+            @dp.append_flow(
+                target=quarantine_path,
+                name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.','_')}"
+            )
+            def f2():
+                df = spark.readStream.table(read_path)
+                return make_quarantine_table(df, quarantine_queries, pk_cols, read_path)
+
+
+        middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_quality, table_name, middle_table)
+
+
+    return None
+
+
+def silver_quality_history_profile(spark, catalog):
+    # We add the history profile process
+
+    @dp.table(
+        name=f"{catalog}.silver_whoz.history_profile",
+        comment="History data for profile.",
+        table_properties={
+            "quality": "silver"
+        }
+    )
+    #@dp.expect_or_drop("completionRate_not_null", "completionRate IS NOT NULL")
+    #@dp.expect_or_drop("completionRate_positive", "completionRate >= 0")
+    #@dp.expect_or_drop("completionRate_lt_1", "completionRate <= 1")
+    def f4():
+        workers = spark.read.table(f"{catalog}.bronze_perso.history_workers")
+        users = spark.read.table(f"{catalog}.bronze_whoz.history_user")
+        talents = spark.read.table(f"{catalog}.bronze_whoz.history_talent")
+        profile = spark.read.table(f"{catalog}.bronze_whoz.history_profile")
+        collab = spark.read.table(f"{catalog}.bronze_perso.history_collab_status")
+
+        ndf = custom_join(workers, collab, "worker", "collab", 
+                             ((workers["id"]==collab["uid"]) & (workers["snapshot_ts"]==collab["snapshot_ts"])), "inner")
+        ndf = custom_join(ndf, users, "join1", "user", ((ndf["mail"] == users["username"]) & (ndf["worker_snapshot_ts"] == users["snapshot_ts"])), "left")
+        ndf = custom_join(ndf, talents, "join2", "talent", ((ndf["user_id"] == talents["userId"]) & (ndf["worker_snapshot_ts"] == talents["snapshot_ts"])), "left")
+        ndf = custom_join(ndf, profile, "join3", "profile", ((ndf["id"] == profile["talentId"]) & (ndf["worker_snapshot_ts"] == profile["snapshot_ts"])), "left")
+
+        cols_to_drop = [
+            "mail",
+            "status",
+            "collab_snapshot_ts",
+            "user_id",
+            "username",
+            "join2_snapshot_ts",
+            "userId", 
+            "talent_snapshot_ts",
+            "profile_id",
+            "talentId",
+            "snapshot_ts",
+            "join3_id"
+        ]
+        ndf = ndf.drop(*cols_to_drop).withColumnRenamed("worker_snapshot_ts", SNAPSHOT_COL).withColumnRenamed("join1_id", "id")
+
+        return ndf
+
+    return None
+
+
+# raw_to_silver.py
+
+import pyspark.pipelines as dp
+import pyspark.sql.functions as F
+import pyspark.sql.types as ty
+# import common.utils as ut
+# import common.constants as c
+# import common.raw_processing.payload_to_table as pt
+# import common.raw_processing.snapshot_processor as sp
+# import common.silver_processing.basic_filtering_and_quarantine as bfq
+from pathlib import Path
+
+
+def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
+
+    known_schema_vol = get_table_volume(spark, "schema", platform, table_name)
+    known_schema_file = get_table_metadata_files(spark, "schema", platform, table_name)
+    known_schema_path = Path(known_schema_vol) / Path(known_schema_file)
+    known_latest_snapshot = load_json(get_conf(spark, "file.latest_snapshot")).get(platform).get(table_name)
+    known_schema = load_json(known_schema_path)
+    metadata_cols = METADATA_COLUMNS
+
+    base = transform_payload_to_table(raw_df, known_schema, metadata_cols)
+    base = base.withColumn(KNOWN_SNAPSHOT, F.lit(known_latest_snapshot))
+    base = trim_str_cols(base)
+
+    if table_name == "talent":
+        base = add_seniority(base, "yearsOfExperience")
+        base = add_date_status(base, "lastConnectionDate")
+    if table_name == "collab_status":
+        base = classify_status_code(spark, base, "status")
+    if table_name == "skill":
+        base = extract_all_english_terms(spark, base)
+    if table_name == "profile":
+        base = add_profile_score_f(base)
+        base = add_bucket_and_status(base, "completionRate")
+        base = add_date_status_prof(base, "lastModifiedDate")
+        base = add_profile_score_f(base)
+    if table_name in ["certification"]:
+        base = add_is_active_col(base, "endDate")
+
+    default_config_file_name = get_conf(spark, "file.default_config")
+
+    table_config_file_name = get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+
+    default_config_path = Path(table_config_volume) / default_config_file_name
+
+    table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
+    silver_config = table_config.get("silver", None)
+
+    cols_to_drop = silver_config.get("cols_to_drop", None)
+    drop_metadata = silver_config.get("drop_metadata", True)
+    filter_queries = silver_config.get("constraints", None)
+    variant_keys_to_extract = silver_config.get("variant_keys_to_extract", None)
+    quarantine_queries = silver_config.get("quarantine", None)
+    middle_table = silver_config.get("middle_table", None)
+    pk_cols = silver_config.get("pk_cols", None)
+
+    if variant_keys_to_extract is not None:
+        if not isinstance(variant_keys_to_extract, dict):
+            raise TypeError("variant keys to extract must be a dict. Col: Dict[key, format]")
+        for col, keys_format in variant_keys_to_extract.items():
+            silver_df = extract_variant_keys(silver_df, col, keys_format)
+
+    if filter_queries is not None:
+        silver_df = filter_conditions(silver_df, filter_queries)
+
+    if cols_to_drop is not None:
+        silver_df = silver_df.drop(*cols_to_drop)
+    if drop_metadata:
+        silver_df = silver_df.drop(*METADATA_COLUMNS)
+
+    return silver_df
+
+
+def silver_pipe_maker(spark, catalog, platform, table_name):
+
+    read_path = f"{catalog}.bronze_{platform}.raw_{table_name}"
+    target_path = f"{catalog}.silver_{platform}.cleaned_{table_name}"
+    @dp.table(
+        name=target_path,
+    )
+    def f():
+        raw_df = spark.read.table(read_path)
+        silver_df = from_raw_to_full_silver_steps(spark, platform, table_name, raw_df)
+        return silver_df
+
+
+    default_config_file_name = get_conf(spark, "file.default_config")
+    table_config_file_name = get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+    default_config_path = Path(table_config_volume) / default_config_file_name
+    table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
+    silver_config = table_config.get("silver", None)
+
+    if silver_config is not None:
+        middle_table = silver_config.get("middle_table", None)
+        if middle_table is not None:
+            middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table, True)
+
+    return None
+
+
+
+
+
+
+def get_last_snapshot(silver_df):
+
+    current_df = silver_df.where(f"{SNAPSHOT_COL} = {KNOWN_SNAPSHOT}")
+
+    return current_df
+
+def get_history(silver_df, cols_to_keep, dates_filter_expr, history_extra_constraints):
+    history_df = history_table_maker(silver_df, cols_to_keep, dates_filter_expr, history_extra_constraints)
+    return history_df
+
+
+
+
+def bronze_to_silver_pipe_maker(spark, catalog, platform, table_name):
+
+    platform_name = get_platform(spark, platform)
+    
+    read_quality = get_quality(spark, "bronze")
+    read_schema = schema_name_builder(read_quality, platform_name)
+    target_quality = get_quality(spark, "silver")
+    target_schema = schema_name_builder(target_quality, platform_name)
+
+    read_table = table_name_builder("raw", table_name)
+    target_table = table_name_builder("cleaned", table_name)
+    read_path = f"{catalog}.{read_schema}.{read_table}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+
+    default_config_file_name = get_conf(spark, "file.default_config")
+    table_config_file_name = get_table_metadata_files(spark, "config", platform, table_name)
+    table_config_volume = get_table_volume(spark, "config", platform, table_name)
+    table_config_path = Path(table_config_volume) / table_config_file_name
+    default_config_path = Path(table_config_volume) / default_config_file_name
+    table_config = get_table_config(table_config_path, platform, table_name, default_config_path)
+    silver_config = table_config.get("silver", None)
+
+    if silver_config is not None:
+        cols_to_drop = silver_config.get("cols_to_drop", None)
+        drop_metadata = silver_config.get("drop_metadata", True)
+        quarantine_queries = silver_config.get("quarantine", None)
+        middle_table = silver_config.get("middle_table", None)
+        pk_cols = silver_config.get("pk_cols", None)
+        if pk_cols is None:
+            raise ValueError(f"PK Columns must be provided in table quality config. It is missing in the json file for {table_name}.")
+        # We add the snapshot col
+        if SNAPSHOT_COL not in pk_cols:
+            pk_cols.append(SNAPSHOT_COL)
+
+
+        @dp.table(
+            name=target_path,
+            comment=f"{table_name} cleaned and filtered data.",
+            table_properties={
+                "quality": target_quality
+            }
+        )
+        def f():
+            df = spark.readStream.table(read_path)
+            df = from_raw_to_full_silver_steps(spark, table_name, df)
+            return df
+
+        if quarantine_queries is not None:
+            create_quarantine_table_sanitize(spark, catalog)
+            quarantine_schema = get_quarantine_schema(spark)
+            quarantine_table = get_quarantine_table(spark, "sanitize")
+            quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+            @dp.append_flow(
+                target=quarantine_path,
+                name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.','_')}"
+            )
+            def f2():
+                df = spark.readStream.table(read_path)
+                return make_quarantine_table(df, quarantine_queries, pk_cols, read_path)
+
+        middle_table_pipe_maker(spark, catalog, target_path, target_schema, target_quality, table_name, middle_table_config, add_snapshot_col=True)
+
+    return None
+
+
+
+
+def silver_to_gold(spark, site_df):
+
+    dim_site = map_site(spark, site_df)
+    dim_collab
+
+    return None
+
+
+
+
+
+
+
+
+
+
+
+
+# dimensions_and_facts.py
+
+
+
+import pyspark.sql as sql
+import pyspark.sql.functions as F
+import pyspark.pipelines as dp
+# import common.utils as ut
+# import common.raw_processing.snapshot_processor as sp
+
+
+
+
+def simple_read_pipe_maker(sparkSession, catalog, platform, table_name, target_type):
+
+    platform_name = get_platform(sparkSession, platform)
+    target_quality = get_quality(sparkSession, "gold")
+    read_quality = get_quality(sparkSession, "silver")
+
+    read_schema = schema_name_builder(read_quality, platform_name)
+    target_schema = schema_name_builder(target_quality, platform_name)
+
+    read_table = table_name_builder("cleaned", table_name)
+    target_table = table_name_builder(target_type, table_name)
+    read_path = f"{catalog}.{read_schema}.{read_table}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_path,
+        comment=f"{target_type} {table_name}.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        return sparkSession.readStream.table(read_path)
+
+    return None
+
+"""
+def worker_process(worker_df, collab_status_df, user_df, talent_df, profile_df):
+
+    "We need to add the collab_status status data"
+    ndf = custom_join(worker_df, collab_status_df, "worker", "collab", worker_df["id"] == collab_status_df["uid"], "left")
+    ndf = ndf.drop(F.col("uid"))
+
+    user_tal = custom_join(
+        user_df, talent_df,
+        "user", "talent",
+        user_df["id"] == talent_df["userId"],
+        "left" # This removes all the talents without a user.
+    )
+
+    user_tal_pro = custom_join(
+        user_tal, profile_df,
+        "user_talent", "profile",
+        user_tal["talent_id"] == profile_df["talentId"],
+        "left" # This removes profiles without talent (though should not happen)
+    )
+
+    worker_pro = custom_join(
+        ndf, user_tal_pro,
+        "worker_2", "profile",
+        ndf["mail"] == user_tal_pro["username"],
+        "left"  # This keeps worker that are not in Whoz but removes user created by other people
+    )
+
+    # Dado que 
+    
+    return worker_pro
+
+def worker_process_pipe_maker(sparkSession, catalog, enable_quarantine: bool = False):
+
+    platform_whoz = get_platform(sparkSession, "whoz")
+    platform_perso = get_platform(sparkSession, "perso")
+    target_quality = get_quality(sparkSession, "gold")
+    read_quality = get_quality(sparkSession, "silver")
+
+    read_schema_whoz = schema_name_builder(read_quality, platform_whoz)
+    read_schema_perso = schema_name_builder(read_quality, platform_perso)
+    target_schema = schema_name_builder(target_quality, platform_perso)
+
+    read_table_worker = table_name_builder("cleaned", "workers")
+    read_table_cs = table_name_builder("cleaned", "collab_status")
+    read_table_user = table_name_builder("cleaned", "user")
+    read_table_talent = table_name_builder("cleaned", "talent")
+    read_table_profile = table_name_builder("cleaned", "profile")
+    target_table = table_name_builder("fact", "workers")
+
+    read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
+    read_path_cs = f"{catalog}.{read_schema_perso}.{read_table_cs}"
+    read_path_user = f"{catalog}.{read_schema_whoz}.{read_table_user}"
+    read_path_talent = f"{catalog}.{read_schema_whoz}.{read_table_talent}"
+    read_path_profile = f"{catalog}.{read_schema_whoz}.{read_table_profile}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_path,
+        comment="Workers data.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        worker = sparkSession.read.table(read_path_worker)
+        cs = sparkSession.read.table(read_path_cs)
+        u = sparkSession.read.table(read_path_user)
+        t = sparkSession.read.table(read_path_talent)
+        p = sparkSession.read.table(read_path_profile)
+        return worker_process(worker, cs, u, t, p)
+
+    if enable_quarantine:
+        quarantine_schema = get_quarantine_schema(spark)
+        quarantine_table = get_quarantine_table(spark, "sanitize")
+        quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+        quarantine_queries = [
+            "worker_service_line_id != collab_service_line_id",
+            "worker_department_id != collab_service_line_id"
+        ]
+        pk_cols = ["id"]
+        @dp.append_flow(
+            target=quarantine_path,
+            name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.','_')}"
+        )
+        def f2():
+            df = spark.readStream.table(target_path)
+            return make_quarantine_table(df, quarantine_queries, pk_cols, target_path)
+
+    return None
+"""
+
+
+def worker_process_2(worker, collab_status, leave):
+
+    ndf = custom_join(worker, collab_status, "worker", "collab", worker["id"] == collab_status["uid"], "inner")
+    ndf = custom_join(
+        ndf, leave,
+        "worker_2", "leave",
+        ndf["id"] == leave["uid"],
+        "left"
+    )
+
+    cols_to_drop = [
+        "skill",
+        "position",
+        "employee_category",
+        "year", "month",
+        "worker_2_uid",
+        "collab_matricule",
+        "collab_site_id",
+        "collab_service_line_id",
+        "collab_department_id",
+        "leave_display_name"
+    ]
+    ndf = ndf.drop(*cols_to_drop)
+
+    cols_to_rename = {
+        "worker_2_display_name": "display_name",
+        "worker_site_id": "site_id",
+        "worker_service_line_id": "service_line_id",
+        "worker_department_id": "department_id"
+    }
+
+    for og, new_c in cols_to_rename.items():
+        ndf = ndf.withColumnRenamed(og, new_c)
+
+    return ndf
+
+def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
+
+    platform_whoz = get_platform(sparkSession, "whoz")
+    platform_perso = get_platform(sparkSession, "perso")
+    target_quality = get_quality(sparkSession, "gold")
+    read_quality = get_quality(sparkSession, "silver")
+
+    read_schema_whoz = schema_name_builder(read_quality, platform_whoz)
+    read_schema_perso = schema_name_builder(read_quality, platform_perso)
+    target_schema = schema_name_builder(target_quality, platform_perso)
+
+    read_table_worker = table_name_builder("cleaned", "workers")
+    read_table_cs = table_name_builder("cleaned", "collab_status")
+    read_table_leave = table_name_builder("cleaned", "leave")
+    target_table = table_name_builder("collab", "referential")
+
+    read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
+    read_path_cs = f"{catalog}.{read_schema_perso}.{read_table_cs}"
+    read_path_leave = f"{catalog}.{read_schema_perso}.{read_table_leave}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_path,
+        comment="Workers data. Fact table.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        worker = sparkSession.read.table(read_path_worker)
+        cs = sparkSession.read.table(read_path_cs)
+        l = sparkSession.read.table(read_path_leave)
+        worker = 
+        return worker_process_2(worker, cs, l)
+
+    if enable_quarantine:
+        quarantine_schema = get_quarantine_schema(spark)
+        quarantine_table = get_quarantine_table(spark, "sanitize")
+        quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+        quarantine_queries = [
+            "worker_service_line_id != collab_service_line_id",
+            "worker_department_id != collab_service_line_id"
+        ]
+        pk_cols = ["id"]
+        @dp.append_flow(
+            target=quarantine_path,
+            name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.','_')}"
+        )
+        def f2():
+            df = spark.readStream.table(target_path)
+            return make_quarantine_table(df, quarantine_queries, pk_cols, target_path)
+
+    return None
+
+
+def fact_cert_acr_process(gold_worker_table, cert_or_acr_table, cert_or_acc_alias):
+
+    worker = gold_worker_table.select(F.col("profile_id"))
+
+    joined = custom_join(worker, cert_or_acr_table, "worker", cert_or_acc_alias, worker["profile_id"] == cert_or_acr_table["profileId"], "left")
+    # Left filters those profiles without a worker
+    return joined
+
+def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
+
+    platform_whoz = get_platform(sparkSession, "whoz")
+    platform_perso = get_platform(sparkSession, "perso")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_whoz = schema_name_builder(silver_quality, platform_whoz)
+    read_schema_perso = schema_name_builder(gold_quality, platform_perso)
+    target_schema = schema_name_builder(gold_quality, platform_whoz)
+
+    read_table_cert = table_name_builder("cleaned", "certification")
+    read_table_acr = table_name_builder("cleaned", "accreditation")
+    read_table_worker = table_name_builder("fact", "workers")
+    read_table_edu = table_name_builder("profile", "educations")
+    read_table_pos = table_name_builder("profile", "positions")
+    read_table_apt = table_name_builder("profile", "aptitudes")
+    read_table_pro = table_name_builder("cleaned", "profile")
+    read_table_tal = table_name_builder("cleaned", "talent")
+    read_table_use = table_name_builder("cleaned", "user")
+    read_table_skill = table_name_builder("cleaned", "skill")
+
+    target_table_cert = table_name_builder("fact", "certification")
+    target_table_acr = table_name_builder("fact", "accreditation")
+    target_table_edu = table_name_builder("fact", "educations")
+    target_table_pos = table_name_builder("fact", "positions")
+    target_table_apt = table_name_builder("fact", "aptitudes")
+    target_table_pro = table_name_builder("fact", "profile")
+    target_table_tal = table_name_builder("", "talent")
+    target_table_use = table_name_builder("", "user")
+    target_table_skill = table_name_builder("dim", "skill")
+
+    read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
+    read_path_cert = f"{catalog}.{read_schema_whoz}.{read_table_cert}"
+    read_path_acr = f"{catalog}.{read_schema_whoz}.{read_table_acr}"
+    read_path_edu = f"{catalog}.{read_schema_whoz}.{read_table_edu}"
+    read_path_pos = f"{catalog}.{read_schema_whoz}.{read_table_pos}"
+    read_path_apt = f"{catalog}.{read_schema_whoz}.{read_table_apt}"
+    read_path_pro = f"{catalog}.{read_schema_whoz}.{read_table_pro}"
+    read_path_tal = f"{catalog}.{read_schema_whoz}.{read_table_tal}"
+    read_path_use = f"{catalog}.{read_schema_whoz}.{read_table_use}"
+    read_path_skill = f"{catalog}.{read_schema_whoz}.{read_table_skill}"
+
+    target_path_cert = f"{catalog}.{target_schema}.{target_table_cert}"
+    target_path_acr = f"{catalog}.{target_schema}.{target_table_acr}"
+    target_path_edu = f"{catalog}.{target_schema}.{target_table_edu}"
+    target_path_pos = f"{catalog}.{target_schema}.{target_table_pos}"
+    target_path_apt = f"{catalog}.{target_schema}.{target_table_apt}"
+    target_path_pro = f"{catalog}.{target_schema}.{target_table_pro}"
+    target_path_tal = f"{catalog}.{target_schema}.{target_table_tal}"
+    target_path_use = f"{catalog}.{target_schema}.{target_table_use}"
+    target_path_skill = f"{catalog}.{target_schema}.{target_table_skill}"
+
+    @dp.table(
+        name=target_path_cert,
+        comment="Fact Certifications",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f2():
+        
+        cert = spark.read.table(read_path_cert)
+        variant_cols = ["qualificationIds", "attachment"]
+        cert = cert.drop(*variant_cols)
+        return cert
+
+    @dp.table(
+        name=target_path_acr,
+        comment="Fact Accreditation",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f3():
+        acr = spark.read.table(read_path_acr)
+        variant_cols = ["qualificationIds", "attachment"]
+        acr = acr.drop(*variant_cols)
+        
+        return acr
+
+    @dp.table(
+        name=target_path_edu,
+        comment="Fact Educations",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f4():
+        edu = spark.read.table(read_path_edu)
+        return edu
+
+
+    @dp.table(
+        name=target_path_pos,
+        comment="Fact Positions",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    #@dp.expect_or_drop("missing_position", "")
+    def f5():
+        pos = spark.read.table(read_path_pos)
+        return pos
+
+    @dp.table(
+        name=target_path_pro,
+        comment="Fact Profile",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    @dp.expect_or_drop("talent_not_missing", "talentId IS NOT NULL")
+    def f6():
+        pro = spark.read.table(read_path_pro)
+        pro_pos = spark.read.table(read_path_pos)
+        cols_to_drop = [
+            "completionDetails",
+            "customFields",
+            "functionalDomains",
+            "headline",
+            "links",
+            "qualificationIds",
+            "schedules",
+            "skillRatings",
+            "targetFunctionalDomains",
+            "targetSkillRatings",
+            "resume"
+        ]
+        pro = pro.drop(*cols_to_drop)
+        pro = add_last_mission_col_to_profile_df(pro, pro_pos)
+        return pro
+
+    
+    @dp.table(
+        name=target_path_apt,
+        comment="Fact Aptitudes",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    @dp.expect_all_or_drop({
+        "missing_aptitude_id": "aptitude_id IS NOT NULL",
+        "missing_concept_id": "concept_id IS NOT NULL"
+    })
+    def f7():
+        apt = spark.read.table(read_path_apt).withColumn(
+            "proficiency",
+            F.when(
+                F.col("aptitude_id").isNotNull() | F.col("concept_id").isNotNull(),
+                F.coalesce(F.col("proficiency").cast("int"), F.lit(0))
+            ).otherwise(F.col("proficiency"))
+        ).withColumn(
+            "concept_aptitude_id",
+            F.coalesce(F.col("concept_id"), F.col("aptitude_id"))
+        )
+        return apt
+
+    @dp.table(
+        name=target_path_tal,
+        comment="Fact Talent",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    @dp.expect_or_drop("user_not_missing", "userId IS NOT NULL")
+    def f8():
+        tal = spark.read.table(read_path_tal)
+        cols_to_drop = [
+            "nationalities",
+            "emails",
+            "address",
+            "tags",
+            "aspirations",
+            "sharingDestinations",
+            "history",
+            "maxWorkingHours",
+            "recruitment",
+            "qualificationIds",
+            "customFields",
+            "photo"
+        ]
+        tal = tal.drop(*cols_to_drop)
+        return tal
+
+
+    @dp.table(
+        name=target_path_use,
+        comment="Fact User",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    @dp.expect_or_drop("username_not_missing", "username IS NOT NULL")
+    def f9():
+        users = spark.read.table(read_path_use)
+        cols_to_drop = [
+            "workspaceRoles",
+            "federationRoles",
+            "agenticStudioRoles",
+            "connectedTalents",
+            "keyboardShortcuts"
+        ]
+        users = users.drop(*cols_to_drop)
+        return users
+
+    
+    @dp.table(
+        name=target_path_skill,
+        comment="Dimension Skill",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f10():
+        skills = spark.read.table(read_path_skill)
+        cols_to_drop = [
+            "alsoPartOf",
+            "coreSkills",
+            "name",
+            "description",
+            "terms",
+            "hiddenTerms",
+            "wikipediaLink",
+            "depiction"
+        ]
+        skills = skills.drop(*cols_to_drop)
+        return skills
+
+    return None
+
+
+def dimension_organization_pipe_maker(sparkSession, catalog):
+
+    platform_ana = get_platform(sparkSession, "analytic")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_analytic = schema_name_builder(silver_quality, platform_ana)
+    target_schema = schema_name_builder(gold_quality, platform_ana)
+
+    read_table_dep = table_name_builder("cleaned", "department")
+    read_table_sl = table_name_builder("cleaned", "service_line")
+    target_table = table_name_builder("dim", "organization")
+
+    read_table_path_dep = f"{catalog}.{read_schema_analytic}.{read_table_dep}"
+    read_table_path_sl = f"{catalog}.{read_schema_analytic}.{read_table_sl}"
+    target_table_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_table_path,
+        comment="Dimension Organization",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        dep_df = spark.read.table(read_table_path_dep)
+        sl_df = spark.read.table(read_table_path_sl)
+        ndf = make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = ndf.drop("associated_service_line", "associated_practice", "service_line_associated_zone", "id", "practiceName", "dz_department_name")
+
+        cols_renames = {
+            "department_associated_zone": "zone_id",
+            "name": "zone_name",
+            "BUCU": "department_bucu",
+            "d_sl_z_3_department_name": "department_name",
+            "zone_name": "og_zone_name"
+        }
+
+        for col, rename in cols_renames.items():
+            ndf = ndf.withColumnRenamed(col, rename)
+
+        ndf = ndf.withColumn(
+            "zone_name",
+            F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
+        )
+        ndf = dim_organization_extra_columns(sparkSession, ndf)
+        return ndf
+
+    return None
+
+
+def dimension_site_pipe_maker(sparkSession, catalog):
+
+    platform_ana = get_platform(sparkSession, "analytic")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_analytic = schema_name_builder(silver_quality, platform_ana)
+    target_schema = schema_name_builder(gold_quality, platform_ana)
+
+    read_table_site = table_name_builder("cleaned", "site")
+    target_table = table_name_builder("dim", "site")
+
+    read_table_path_site = f"{catalog}.{read_schema_analytic}.{read_table_site}"
+    target_table_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_table_path,
+        comment="Dimension Site",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f():
+        site_df = spark.read.table(read_table_path_site)
+        ndf = map_site(sparkSession, site_df)
+        return ndf
+
+    return None
+
+
+def make_gold_history_profile_pipe(sparkSession, catalog):
+
+    @dp.table(
+        name=f"{catalog}.gold_whoz.history_profile",
+        comment="Gold Time series of profile completion and score",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        return sparkSession.read.table(f"{catalog}.silver_whoz.history_profile")
+
+    return None
+
+
+
+
+
+
+
+
+
+
+# silver_to_gold.py
+
+
+import pyspark.pipelines as dp
+import pyspark.sql.functions as F
+import pyspark.sql.types as ty
+# import common.utils as ut
+# import common.constants as c
+# import common.raw_processing.payload_to_table as pt
+# import common.raw_processing.snapshot_processor as sp
+# import common.silver_processing.basic_filtering_and_quarantine as bfq
+# import common.gold_processing.dimensions_and_facts as daf
+from pathlib import Path
+
+
+
+def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, profile_df, keep_history = False):
+
+    if not keep_history:
+        worker_df = max_filter(worker_df, ["id"], SNAPSHOT_COL)
+        collab_df = max_filter(collab_df, ["uid"], SNAPSHOT_COL)
+        leave_df = max_filter(leave_df, ["uid"], SNAPSHOT_COL)
+        user_df = max_filter(user_df, ["id"], SNAPSHOT_COL)
+        talent_df = max_filter(talent_df, ["id"], SNAPSHOT_COL)
+        profile_df = max_filter(profile_df, ["id"], SNAPSHOT_COL)
+
+    wc_m_cols = get_matching_cols(worker_df, collab_df) # department_id	++	service_line_id	++	site_id	++	matricule
+    worker = custom_join(worker_df, collab_df, "worker", "collab", worker_df["id"] == collab_df["uid"], "inner", keep_history)
+    worker = worker.drop("uid", *[f"collab_{col}" for col in wc_m_cols])
+    renames = dict()
+    for col in wc_m_cols:
+        renames[f"worker_{col}"] = col
+    worker = worker.withColumnsRenamed(renames)
+
+
+    wl_m_cols = get_matching_cols(worker, leave_df) # display_name	++	matricule
+    worker = custom_join(worker, leave_df, "worker", "leave", worker["id"] == leave_df["uid"], "left", keep_history)
+    worker = worker.drop("uid", *[f"leave_{col}" for col in wl_m_cols])
+    renames = dict()
+    for col in wl_m_cols:
+        renames[f"worker_{col}"] = col
+    worker = worker.withColumnsRenamed(renames)
+
+
+    wu_m_cols = get_matching_cols(worker, user_df) # id
+    worker_user = custom_join(worker, user_df, "worker", "user", worker["mail"] == user_df["username"], "left", keep_history) # left, to keep the workers without whoz profile
+    # Here, workers id is renamed to worker_id, and user id, to user_id, no need to do any rename.
+    worker_user = worker_user.drop("username")
+
+
+    wut_m_cols = get_matching_cols(worker_user, talent_df) # removed	++	createdDate	++	lastConnectionDate	++	language	++	createdBy	++	lastModifiedBy	++	gender	++	lastModifiedDate
+    # We dont want to remove any of this columns and we rather keep what do they reference to
+    wut = custom_join(worker_user, talent_df, "user", "talent", worker_user["user_id"] == talent_df["userId"], "left", keep_history)
+    wut = wdrop("userId")
+    # Need to rename id to talent_id
+    wut = wwithColumnRenamed("id", "talent_id")
+
+
+    wutp_m_cols = get_matching_cols(wut, profile_df) # status	++	DaysSince	++	permissionScope	++	federationId	++	qualificationIds	++	customFields
+    # No need to rename, we keep both
+    wutp = custom_join(wut, profile_df, "talent", "profile", wut["talent_id"] == profile_df["talentId"], "left", keep_history)
+    wutp = wutp.drop("talentId")
+    wutp = wutp.withColumnRenamed("id", "profile_id")
+
+    
+    ndf = drop_variant_cols(wutp) # Required for the dashboards
+    return ndf
+
+
+def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
+
+    platform_whoz = get_platform(sparkSession, "whoz")
+    platform_perso = get_platform(sparkSession, "perso")
+    target_quality = get_quality(sparkSession, "gold")
+    read_quality = get_quality(sparkSession, "silver")
+
+    read_schema_whoz = schema_name_builder(read_quality, platform_whoz)
+    read_schema_perso = schema_name_builder(read_quality, platform_perso)
+    target_schema = schema_name_builder(target_quality, platform_perso)
+
+    read_table_worker = table_name_builder("cleaned", "workers")
+    read_table_cs = table_name_builder("cleaned", "collab_status")
+    read_table_leave = table_name_builder("cleaned", "leave")
+    read_table_user = table_name_builder("cleaned", "user")
+    read_table_talent = table_name_builder("cleaned", "talent")
+    read_table_profile = table_name_builder("cleaned", "profile")
+    target_table = table_name_builder("collab", "referential")
+    target_table_history = table_name_builder("history", "profile")
+
+    read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
+    read_path_cs = f"{catalog}.{read_schema_perso}.{read_table_cs}"
+    read_path_leave = f"{catalog}.{read_schema_perso}.{read_table_leave}"
+    read_path_user = f"{catalog}.{read_schema_whoz}.{read_table_user}"
+    read_path_talent = f"{catalog}.{read_schema_whoz}.{read_table_talent}"
+    read_path_profile = f"{catalog}.{read_schema_whoz}.{read_table_profile}"
+    target_path = f"{catalog}.{target_schema}.{target_table}"
+    target_path_history = f"{catalog}.{target_schema}.{target_table_history}"
+
+    @dp.table(
+        name=target_path_history,
+        comment="Workers data. Fact table. Historical",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        worker = sparkSession.read.table(read_path_worker)
+        cs = sparkSession.read.table(read_path_cs)
+        lea = sparkSession.read.table(read_path_leave)
+        use = sparkSession.read.table(read_path_user)
+        pro = sparkSession.read.table(read_path_profile)
+        tal = sparkSession.read.table(read_path_talent)
+
+        ndf = worker_profile_process(worker, cs, lea, use, tal, pro, True)
+        return ndf
+
+
+    @dp.table(
+        name=target_path,
+        comment="Workers data. Fact table.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f2():
+        worker_profile = sparkSession.read.table(target_path_history)
+        ndf = max_filter(worker_profile, ["worker_id"], SNAPSHOT_COL)
+        return ndf
+
+    if enable_quarantine:
+        quarantine_schema = get_quarantine_schema(spark)
+        quarantine_table = get_quarantine_table(spark, "sanitize")
+        quarantine_path = f"{catalog}.{quarantine_schema}.{quarantine_table}"
+        quarantine_queries = [
+            "worker_service_line_id != collab_service_line_id",
+            "worker_department_id != collab_service_line_id"
+        ]
+        pk_cols = ["id"]
+        @dp.append_flow(
+            target=quarantine_path,
+            name=f"flow_{target_path.replace('.','_')}_{quarantine_path.replace('.','_')}"
+        )
+        def f3():
+            df = spark.read.table(target_path)
+            return make_quarantine_table(df, quarantine_queries, pk_cols, target_path)
+
+    return None
+
+
+
+
+
+
+
+
+
+# dimension_date.py
+
+from pyspark.sql import functions as F
+# import common.utils as ut
+import pyspark.pipelines as dp
+
+# ------------------------------------------------------------
+# Configuración
+# ------------------------------------------------------------
+#CATALOG = get_conf(spark, "catalog")
+#TABLE_NAME = f"{CATALOG}.gold_date.dim_date"
+
+START_DATE = "2025-01-01"
+END_DATE   = "2050-12-31"
+
+# ------------------------------------------------------------
+# Crear rango de fechas
+# ------------------------------------------------------------
+
+def make_date_range():
+    df = (
+        spark.range(1)
+        .select(
+            F.explode(
+                F.sequence(
+                    F.to_date(F.lit(START_DATE)),
+                    F.to_date(F.lit(END_DATE)),
+                    F.expr("INTERVAL 1 DAY")
+                )
+            ).alias("Date")
+        )
+    )
+    return df
+
+# ------------------------------------------------------------
+# Nombres de días y meses en español
+# ------------------------------------------------------------
+day_names = F.create_map(
+    F.lit(1), F.lit("Monday"),
+    F.lit(2), F.lit("Tuesday"),
+    F.lit(3), F.lit("Wednesday"),
+    F.lit(4), F.lit("Thursday"),
+    F.lit(5), F.lit("Friday"),
+    F.lit(6), F.lit("Saturday"),
+    F.lit(7), F.lit("Sunday")
+)
+
+month_names = F.create_map(
+    F.lit(1),  F.lit("January"),
+    F.lit(2),  F.lit("February"),
+    F.lit(3),  F.lit("March"),
+    F.lit(4),  F.lit("April"),
+    F.lit(5),  F.lit("May"),
+    F.lit(6),  F.lit("June"),
+    F.lit(7),  F.lit("July"),
+    F.lit(8),  F.lit("August"),
+    F.lit(9),  F.lit("September"),
+    F.lit(10), F.lit("October"),
+    F.lit(11), F.lit("November"),
+    F.lit(12), F.lit("December")
+)
+
+# ------------------------------------------------------------
+# Construcción de la dimensión calendario
+# ------------------------------------------------------------
+def make_calendar_df():
+    df_calendar = (
+        make_date_range()
+        .withColumn("Year", F.year("Date"))
+        .withColumn("Month", F.month("Date"))
+        .withColumn("Day", F.dayofmonth("Date"))
+
+        # Día de la semana: 1 = Lunes ... 7 = Domingo
+        .withColumn("DayOfWeek", F.dayofweek("Date"))
+        .withColumn(
+            "DayName",
+            day_names[F.dayofweek("Date")]
+        )
+        .withColumn(
+            "DayShort",
+            F.substring(day_names[F.dayofweek("Date")], 1, 3)
+        )
+
+        # Mes
+        .withColumn(
+            "MonthName",
+            month_names[F.month("Date")]
+        )
+        .withColumn(
+            "MonthShort",
+            F.substring(month_names[F.month("Date")], 1, 3)
+        )
+
+        # Trimestre
+        .withColumn("Quarter", F.quarter("Date"))
+        .withColumn(
+            "QuarterYear",
+            F.concat(
+                F.lit("Q"),
+                F.quarter("Date"),
+                F.lit("-"),
+                F.year("Date")
+            )
+        )
+
+        # Semana ISO
+        .withColumn("WeekNumber", F.weekofyear("Date"))
+
+        # Indicadores relativos a la fecha actual
+        .withColumn(
+            "IsCurrentMonth",
+            (
+                (F.year("Date") == F.year(F.current_date())) &
+                (F.month("Date") == F.month(F.current_date()))
+            )
+        )
+        .withColumn(
+            "IsCurrentYear",
+            F.year("Date") == F.year(F.current_date())
+        )
+
+        # Selección y orden final de columnas
+        .select(
+            "Date",
+            "Year",
+            "Month",
+            "Day",
+            "DayName",
+            "DayShort",
+            "MonthName",
+            "MonthShort",
+            "Quarter",
+            "QuarterYear",
+            "WeekNumber",
+            "IsCurrentMonth",
+            "IsCurrentYear"
+        )
+        .orderBy("Date")
+    )
+
+    return df_calendar
+
+# ------------------------------------------------------------
+# Crear/reemplazar tabla Delta
+# ------------------------------------------------------------
+"""(
+    df_calendar
+    .write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(TABLE_NAME)
+)"""
+
+def make_dim_date_pipe_maker(catalog):
+    TABLE_NAME = f"{catalog}.gold_date.dim_date"
+
+    @dp.table(
+        name= TABLE_NAME,
+        comment="Dimension Date. Adds the date metadata for each date.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        return make_calendar_df()
+
+    return None
+
+#print(f"Tabla '{TABLE_NAME}' creada correctamente.")
+
+
+# all_tables_bronze_silver_2.py
+
+
+# import common.raw_processing.raw_reader as rr
+# import common.raw_processing.payload_to_table as pt
+# import common.raw_processing.snapshot_processor as sp
+# import common.silver_processing.basic_filtering_and_quarantine as bfq
+# import common.silver_processing.raw_to_silver as rts
+# import common.gold_processing.dimensions_and_facts as daf
+# import common.gold_processing.dimension_date as dd
+# import common.gold_processing.silver_to_gold as stg
+# import common.utils as ut
+
+
+PLATFORM_TABLES = {
+    "analytic": ["bu", "department", "entity", "service_line", "site", "society"],
+    "whoz": ["accreditation", "certification", "profile", "skill", "talent", "user"],
+    "perso": ["collab_status", "leave", "workers"]
+}
+CATALOG = get_conf(spark, "catalog")
+#create_quarantine_table(spark, CATALOG)
+#create_quarantine_table_sanitize(spark, CATALOG)
+for platform, tables in PLATFORM_TABLES.items():
+    for table in tables:
+        raw_bronze_pipe_maker(spark, CATALOG, platform, table, True)
+        silver_pipe_maker(spark, CATALOG, platform, table)
+
+dimension_organization_pipe_maker(spark, CATALOG)
+dimension_site_pipe_maker(spark, CATALOG)
+make_dim_date_pipe_maker(CATALOG)
+worker_process_pipe_maker_2(spark, CATALOG)

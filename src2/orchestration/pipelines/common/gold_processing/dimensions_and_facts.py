@@ -137,7 +137,6 @@ def worker_process_2(worker, collab_status, leave):
         ndf["id"] == leave["uid"],
         "left"
     )
-    ndf = ndf.where("status_name != 'Compte Technique'")
 
     cols_to_drop = [
         "skill",
@@ -218,6 +217,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
             return ut.make_quarantine_table(df, quarantine_queries, pk_cols, target_path)
 
     return None
+
 
 def fact_cert_acr_process(gold_worker_table, cert_or_acr_table, cert_or_acc_alias):
 

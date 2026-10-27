@@ -1286,7 +1286,7 @@ def extract_all_english_terms(sparkSession, skill_df):
     return ndf
 
 
-def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode):
+def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode, keep_history = False):
 
     l = left_df.alias(alias_left)
     r = right_df.alias(alias_right)
@@ -1319,6 +1319,11 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
                 r[col].alias(f"{col}")
             )
 
+
+    if keep_history:
+        join_on_cond = (join_on_cond
+                        & (left_df[SNAPSHOT_COL] == right_df[SNAPSHOT_COL])
+        )
     ndf = l.join(
         r,
         join_on_cond,
@@ -1327,6 +1332,10 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
         *left_cols,
         *right_cols
     )
+
+    if keep_history:
+        ndf = ndf.drop(f"{alias_right}_{SNAPSHOT_COL}")
+        ndf = ndf.withColumnRenamed(f"{alias_left}_{SNAPSHOT_COL}", SNAPSHOT_COL)
 
     return ndf
 
@@ -1349,7 +1358,7 @@ def create_quarantine_table_sanitize(spark, catalog):
     return None
 
 
-def max_filter(df, pk_cols, col_to_select, temp_view_name):
+def max_filter(df, pk_cols, col_to_select):
 
     if not isinstance(pk_cols, (str, list)):
         raise TypeError("pk_cols must be a list or str")
@@ -1362,32 +1371,29 @@ def max_filter(df, pk_cols, col_to_select, temp_view_name):
 
     if not all(c in df.columns for c in pk_cols) or col_to_select not in df.columns:
         raise ValueError("pk_cols and col_to_select must be in df columns.")
-
+    """
     cols = [c for c in df.columns if c not in pk_cols]
 
-    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias("max_"))
+    max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias(f"max_{col_to_select}"))
 
-    df.createOrReplaceTempView(temp_view_name)
-    max_df.createOrReplaceTempView(temp_view_name + "_max")
+    ndf = custom_join(ndf, max_df, "og", "max", "left")
+
+    c_to_drop = list()
+    for pk in pk_cols:
+        ndf = ndf.withColumnRenamed(f"og_{pk}", pk)
+        c_to_drop.append(f"max_{pk}")
+
+    ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
+    ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     """
-    # Join con el dataframe original para obtener las filas completas
-    ndf = df.join(
-        max_,
-        on=pk_cols
-    ).filter(
-        F.col(col_to_select) == F.col("max_")
-    ).drop("max_")
-    """
+    window = Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
 
-    left_alias = "og"
-    right_alias = "m"
-    join_cols_sql = " AND ".join(f"{left_alias}.{pk} = {right_alias}.{pk}" for pk in pk_cols)
-
-    df_cols = df.columns
-    select_cols_sql = ", ".join(f"{left_alias}.{col} AS {col}" for col in df_cols)
+    ndf = (
+        df.withColumn("rn", F.row_number().over(w))
+        .filter(F.col("rn") == 1)   # 1 = top row of each partition; use 2, 3... for others
+        .drop("rn")
+    )
     
-    # We need to creat the temp view and use sql
-    ndf = spark.sql(f"SELECT {select_cols_sql} FROM {temp_view_name} AS {left_alias} LEFT JOIN {temp_view_name + "_max"} AS {right_alias} ON {join_cols_sql} WHERE {left_alias}.{col_to_select} = {right_alias}.max_")
     return ndf
 
 
@@ -1625,6 +1631,37 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 
 
     return ndf
+
+def drop_variant_cols(df):
+    cols_to_drop = list()
+    for col in df.columns:
+        if isinstance(df.schema[ccol].dataType, (ty.VariantType, ty.StructType)):
+            cols_to_drop.append(ccol)
+    ndf = df.drop(*cols_to_drop)
+    return ndf
+
+
+def get_matching_cols(df1, df2):
+    c1 = set(df1.columns)
+    c2 = set(df2.columns)
+
+    matching_cols = c1.intersection(c2)
+    return matching_cols
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2493,6 +2530,7 @@ import pyspark.sql as sql
 import pyspark.sql.functions as F
 import pyspark.pipelines as dp
 # import common.utils as ut
+# import common.raw_processing.snapshot_processor as sp
 
 
 
@@ -2625,7 +2663,6 @@ def worker_process_2(worker, collab_status, leave):
         ndf["id"] == leave["uid"],
         "left"
     )
-    ndf = ndf.where("status_name != 'Compte Technique'")
 
     cols_to_drop = [
         "skill",
@@ -2685,6 +2722,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
         worker = sparkSession.read.table(read_path_worker)
         cs = sparkSession.read.table(read_path_cs)
         l = sparkSession.read.table(read_path_leave)
+        worker = 
         return worker_process_2(worker, cs, l)
 
     if enable_quarantine:
@@ -2705,6 +2743,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
             return make_quarantine_table(df, quarantine_queries, pk_cols, target_path)
 
     return None
+
 
 def fact_cert_acr_process(gold_worker_table, cert_or_acr_table, cert_or_acc_alias):
 

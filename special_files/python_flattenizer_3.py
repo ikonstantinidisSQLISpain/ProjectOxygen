@@ -66,3 +66,21 @@ merge_python_files(
     "src2/orchestration/pipelines/all_tables_bronze_silver_single_file_2.py",
     ["c.", "ut.", "rr.", "sp.", "pt.", "bfq.", "daf.", "dd."]
 )
+
+merge_python_files(
+    [
+        "src2/orchestration/pipelines/common/constants.py",
+        "src2/orchestration/pipelines/common/utils.py",
+        "src2/orchestration/pipelines/common/raw_processing/raw_reader.py",
+        "src2/orchestration/pipelines/common/raw_processing/payload_to_table.py",
+        "src2/orchestration/pipelines/common/raw_processing/snapshot_processor.py",
+        "src2/orchestration/pipelines/common/silver_processing/basic_filtering_and_quarantine.py",
+        "src2/orchestration/pipelines/common/silver_processing/raw_to_silver.py",
+        "src2/orchestration/pipelines/common/gold_processing/dimensions_and_facts.py",
+        "src2/orchestration/pipelines/common/gold_processing/silver_to_gold.py",
+        "src2/orchestration/pipelines/common/gold_processing/dimension_date.py",
+        "src2/orchestration/pipelines/all_tables_bronze_silver_2.py"
+    ],
+    "src2/orchestration/pipelines/all_tables_bronze_silver_single_file_v2.py",
+    ["c.", "ut.", "rr.", "sp.", "pt.", "bfq.", "daf.", "dd.", "stg.", "rts."]
+)

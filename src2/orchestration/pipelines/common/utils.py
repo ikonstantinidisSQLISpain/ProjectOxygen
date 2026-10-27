@@ -1267,7 +1267,7 @@ def extract_all_english_terms(sparkSession, skill_df):
     return ndf
 
 
-def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode):
+def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mode, keep_history = False):
 
     l = left_df.alias(alias_left)
     r = right_df.alias(alias_right)
@@ -1300,6 +1300,11 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
                 r[col].alias(f"{col}")
             )
 
+
+    if keep_history:
+        join_on_cond = (join_on_cond
+                        & (left_df[c.SNAPSHOT_COL] == right_df[c.SNAPSHOT_COL])
+        )
     ndf = l.join(
         r,
         join_on_cond,
@@ -1308,6 +1313,10 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
         *left_cols,
         *right_cols
     )
+
+    if keep_history:
+        ndf = ndf.drop(f"{alias_right}_{c.SNAPSHOT_COL}")
+        ndf = ndf.withColumnRenamed(f"{alias_left}_{c.SNAPSHOT_COL}", c.SNAPSHOT_COL)
 
     return ndf
 
@@ -1330,7 +1339,7 @@ def create_quarantine_table_sanitize(spark, catalog):
     return None
 
 
-def max_filter(df, pk_cols, col_to_select, temp_view_name):
+def max_filter(df, pk_cols, col_to_select):
 
     if not isinstance(pk_cols, (str, list)):
         raise TypeError("pk_cols must be a list or str")
@@ -1343,7 +1352,7 @@ def max_filter(df, pk_cols, col_to_select, temp_view_name):
 
     if not all(c in df.columns for c in pk_cols) or col_to_select not in df.columns:
         raise ValueError("pk_cols and col_to_select must be in df columns.")
-
+    """
     cols = [c for c in df.columns if c not in pk_cols]
 
     max_df = df.groupBy(pk_cols).agg(F.max(F.col(col_to_select)).alias(f"max_{col_to_select}"))
@@ -1357,6 +1366,14 @@ def max_filter(df, pk_cols, col_to_select, temp_view_name):
 
     ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
     ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
+    """
+    window = Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
+
+    ndf = (
+        df.withColumn("rn", F.row_number().over(w))
+        .filter(F.col("rn") == 1)   # 1 = top row of each partition; use 2, 3... for others
+        .drop("rn")
+    )
     
     return ndf
 
@@ -1595,5 +1612,36 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 
 
     return ndf
+
+def drop_variant_cols(df):
+    cols_to_drop = list()
+    for col in df.columns:
+        if isinstance(df.schema[ccol].dataType, (ty.VariantType, ty.StructType)):
+            cols_to_drop.append(ccol)
+    ndf = df.drop(*cols_to_drop)
+    return ndf
+
+
+def get_matching_cols(df1, df2):
+    c1 = set(df1.columns)
+    c2 = set(df2.columns)
+
+    matching_cols = c1.intersection(c2)
+    return matching_cols
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
