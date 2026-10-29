@@ -14,6 +14,7 @@ for _p in [os.path.abspath(p) for p in ['', '..']]:
 import json
 from pathlib import Path
 import pyspark.sql.functions as F
+import pyspark.sql.window as WF
 import pyspark.sql.types as ty
 import common.constants as c
 from functools import reduce
@@ -343,7 +344,7 @@ Extract multiple fields from an array of objects:
         col_to_extract,
         F.expr(f"parse_json(cast({col_to_extract} as string))")
     )
-    ndf = explode_variant_list_column(sparkSession, ndf, col_to_extract)
+    ndf = explode_variant_list_column(sparkSession, ndf, col_to_extract, True)
     ndf = ndf.select(*cols_pk, F.col("value").alias(col_to_extract))
 
     
@@ -1367,10 +1368,10 @@ def max_filter(df, pk_cols, col_to_select):
     ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
     ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     """
-    window = Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
+    window = WF.Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
 
     ndf = (
-        df.withColumn("rn", F.row_number().over(w))
+        df.withColumn("rn", F.row_number().over(window))
         .filter(F.col("rn") == 1)   # 1 = top row of each partition; use 2, 3... for others
         .drop("rn")
     )
@@ -1470,34 +1471,26 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
     pp_df = profile_positions_df.where("is_mission = TRUE")
 
-    last_pos_date = pp_df.groupBy("profile_id").agg(F.max("startDate").alias("last_date")).withColumnRenamed("profile_id", "pp_df")
-    pp_df = pp_df.join(last_pos_date, pp_df["profile_id"] == last_pos_date["pp_df"], "left").drop("pp_df")
+    w = WF.Window.partitionBy("profile_id").orderBy(
+        F.col("startDate").desc_nulls_last(),
+        F.col("endDate").desc_nulls_first(),   # null endDate = ongoing -> wins ties
+    )
 
-
-    pp_df = pp_df.where("startDate = last_date").drop("last_date")
-
-    pp_count = pp_df.groupBy("profile_id").count().withColumnRenamed("profile_id", "c_profile_id")
-    pp_df = pp_df.join(pp_count, pp_df["profile_id"] == pp_count["c_profile_id"], "left").drop("c_profile_id")
-
-    g1 = pp_df.where("count = 1")
-    g2 = pp_df.where("count > 1")
-
-    g3 = g2.where("endDate IS NULL")
-    g4 = g2.where("endDate IS NOT NULL").join(g3.select("profile_id"), on="profile_id", how="left_anti")
-
-    last_end_date = g4.groupBy("profile_id").agg(F.max("endDate").alias("last_end_date")).withColumnRenamed("profile_id", "l_profile_id")
-    g4 = g4.join(last_end_date, g4["profile_id"]==last_end_date["l_profile_id"], "left").drop("l_profile_id")
-    g4 = g4.where("endDate = last_end_date").drop("last_end_date")
-
-    final = g1.unionByName(g3).unionByName(g4)
-    
-    pp_df = final.select("profile_id", "title", "startDate")
-
+    pp_df = (
+        profile_positions_df
+        .where("is_mission = TRUE")
+        .withColumn("rn", F.row_number().over(w))
+        .where("rn = 1")
+        .select(
+            "profile_id",
+            F.col("title").alias("last_mission_title"),
+            F.col("startDate").alias("last_mission_start_date"),
+            F.col("companyName").alias("last_mission_company_name"),
+        )
+    )
 
     ndf = custom_join(profile_df, pp_df, "profile", "pp", profile_df["id"] == pp_df["profile_id"], "left")
     ndf = ndf.drop("profile_id")
-    ndf = ndf.withColumnRenamed("startDate", "last_mission_start_date")
-    ndf = ndf.withColumnRenamed("title", "last_mission_title")
 
     return ndf
 
@@ -1616,8 +1609,8 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 def drop_variant_cols(df):
     cols_to_drop = list()
     for col in df.columns:
-        if isinstance(df.schema[ccol].dataType, (ty.VariantType, ty.StructType)):
-            cols_to_drop.append(ccol)
+        if isinstance(df.schema[col].dataType, (ty.VariantType, ty.StructType)):
+            cols_to_drop.append(col)
     ndf = df.drop(*cols_to_drop)
     return ndf
 
@@ -1632,6 +1625,48 @@ def get_matching_cols(df1, df2):
 
 
 
+def add_data_quality_issues(worker_df):
+
+    ndf = collab_df.withColumn(
+        "missing_gcm_job",
+        F.when(
+            (
+                (F.col("gcm_job").isNull())
+                | (F.col("gcm_job") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_gcm_job_family",
+        F.when(
+            (
+                (F.col("gcm_job_family").isNull())
+                | (F.col("gcm_job_family") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_department",
+        F.when(
+            F.col("department_id").isNull(),
+            True
+        ).otherwise(False)
+    )
+    # GCM Job undefined | GCM Job Family undefined | Department undefined
+    sep = " | "
+    ndf = ndf.withColumn(
+        "data_quality",
+        (
+            f"GCM Job undefined"*F.col("missing_gcm_job")
+            + "GCM Job Family undefined"*F.col("missing_gcm_job_family")
+        )
+    )
+
+    return ndf
 
 
 

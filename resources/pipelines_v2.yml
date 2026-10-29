@@ -1,7 +1,7 @@
 resources:
   pipelines:
-    dashboardsv2:
-      name: dashboard
+    dashboards_v2:
+      name: dashboards_v2
       configuration:
         catalog: ${var.catalog}
         raw.schema: landing

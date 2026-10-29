@@ -36,6 +36,9 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
         base = ut.add_profile_score_f(base)
     if table_name in ["certification"]:
         base = ut.add_is_active_col(base, "endDate")
+    if table_name == "user":
+        base = ut.explode_variant_list_column(spark, base, "connectedTalents", False, True)
+        base = ut.extract_variant_keys(base, "connectedTalents", {"id": "STRING"})
 
     default_config_file_name = ut.get_conf(spark, "file.default_config")
 
@@ -56,6 +59,8 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     middle_table = silver_config.get("middle_table", None)
     pk_cols = silver_config.get("pk_cols", None)
 
+    silver_df = base
+
     if variant_keys_to_extract is not None:
         if not isinstance(variant_keys_to_extract, dict):
             raise TypeError("variant keys to extract must be a dict. Col: Dict[key, format]")
@@ -65,10 +70,14 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     if filter_queries is not None:
         silver_df = ut.filter_conditions(silver_df, filter_queries)
 
+    """
     if cols_to_drop is not None:
         silver_df = silver_df.drop(*cols_to_drop)
+    """
     if drop_metadata:
         silver_df = silver_df.drop(*c.METADATA_COLUMNS)
+        silver_df = silver_df.drop(c.REMAINING_PAYLOAD)
+    
 
     return silver_df
 
@@ -95,9 +104,9 @@ def silver_pipe_maker(spark, catalog, platform, table_name):
     silver_config = table_config.get("silver", None)
 
     if silver_config is not None:
-        middle_table = silver_config.get("middle_table", None)
-        if middle_table is not None:
-            bfq.middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table, True)
+        middle_table_config = silver_config.get("middle_table", None)
+        if middle_table_config is not None:
+            bfq.middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table_config, True)
 
     return None
 

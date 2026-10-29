@@ -35,6 +35,7 @@ def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_qua
 
         if add_snapshot_col:
             pks.append(c.SNAPSHOT_COL)
+            new_pk_names.append(c.SNAPSHOT_COL)
         if isinstance(cols_to_extract, list):
             extraction_names = middle_table.get("extraction_names", None)
             if extraction_names is None:
@@ -91,7 +92,7 @@ def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_qua
                 }
             )
             def f3():
-                df = spark.readStream.table(read_path)
+                df = spark.read.table(read_path)
                 return ut.middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
     return None
 

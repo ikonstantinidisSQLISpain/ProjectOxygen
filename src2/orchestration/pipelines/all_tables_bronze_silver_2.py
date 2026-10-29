@@ -15,7 +15,7 @@ PLATFORM_TABLES = {
     "whoz": ["accreditation", "certification", "profile", "skill", "talent", "user"],
     "perso": ["collab_status", "leave", "workers"]
 }
-CATALOG = ut.get_conf(spark, "catalog")
+CATALOG = "oxygen"#ut.get_conf(spark, "catalog")
 #rr.create_quarantine_table(spark, CATALOG)
 #bfq.create_quarantine_table_sanitize(spark, CATALOG)
 for platform, tables in PLATFORM_TABLES.items():
@@ -27,3 +27,4 @@ daf.dimension_organization_pipe_maker(spark, CATALOG)
 daf.dimension_site_pipe_maker(spark, CATALOG)
 dd.make_dim_date_pipe_maker(CATALOG)
 stg.worker_process_pipe_maker_2(spark, CATALOG)
+stg.fact_tables_pipe_maker(spark, CATALOG)

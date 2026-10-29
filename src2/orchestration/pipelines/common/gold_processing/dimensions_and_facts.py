@@ -196,7 +196,6 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
         worker = sparkSession.read.table(read_path_worker)
         cs = sparkSession.read.table(read_path_cs)
         l = sparkSession.read.table(read_path_leave)
-        worker = 
         return worker_process_2(worker, cs, l)
 
     if enable_quarantine:
@@ -227,12 +226,12 @@ def fact_cert_acr_process(gold_worker_table, cert_or_acr_table, cert_or_acc_alia
     # Left filters those profiles without a worker
     return joined
 
-def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
+def certifications_accreditation_and_workers_pipe(spark, catalog):
 
-    platform_whoz = ut.get_platform(sparkSession, "whoz")
-    platform_perso = ut.get_platform(sparkSession, "perso")
-    gold_quality = ut.get_quality(sparkSession, "gold")
-    silver_quality = ut.get_quality(sparkSession, "silver")
+    platform_whoz = ut.get_platform(spark, "whoz")
+    platform_perso = ut.get_platform(spark, "perso")
+    gold_quality = ut.get_quality(spark, "gold")
+    silver_quality = ut.get_quality(spark, "silver")
 
     read_schema_whoz = ut.schema_name_builder(silver_quality, platform_whoz)
     read_schema_perso = ut.schema_name_builder(gold_quality, platform_perso)

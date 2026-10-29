@@ -2,17 +2,18 @@
 
 
 
+SNAPSHOT_COL = "snapshot_ts"
+INGEST_TS_COL = "ingest_ts"
+
+KNOWN_SNAPSHOT = "known_latest_snapshot"
+REMAINING_PAYLOAD = "remaining_payload"
+
 METADATA_COLUMNS = [
     "_source_file",
     "_source_file_name",
     "_source_file_size",
     "_source_file_modified_at"
 ]
-
-SNAPSHOT_COL = "snapshot_ts"
-INGEST_TS_COL = "ingest_ts"
-
-KNOWN_SNAPSHOT = "known_latest_snapshot"
 
 
 # utils.py
@@ -33,6 +34,7 @@ for _p in [os.path.abspath(p) for p in ['', '..']]:
 import json
 from pathlib import Path
 import pyspark.sql.functions as F
+import pyspark.sql.window as WF
 import pyspark.sql.types as ty
 # import common.constants as c
 from functools import reduce
@@ -362,7 +364,7 @@ Extract multiple fields from an array of objects:
         col_to_extract,
         F.expr(f"parse_json(cast({col_to_extract} as string))")
     )
-    ndf = explode_variant_list_column(sparkSession, ndf, col_to_extract)
+    ndf = explode_variant_list_column(sparkSession, ndf, col_to_extract, True)
     ndf = ndf.select(*cols_pk, F.col("value").alias(col_to_extract))
 
     
@@ -1386,10 +1388,10 @@ def max_filter(df, pk_cols, col_to_select):
     ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
     ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     """
-    window = Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
+    window = WF.Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
 
     ndf = (
-        df.withColumn("rn", F.row_number().over(w))
+        df.withColumn("rn", F.row_number().over(window))
         .filter(F.col("rn") == 1)   # 1 = top row of each partition; use 2, 3... for others
         .drop("rn")
     )
@@ -1489,34 +1491,26 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
     pp_df = profile_positions_df.where("is_mission = TRUE")
 
-    last_pos_date = pp_df.groupBy("profile_id").agg(F.max("startDate").alias("last_date")).withColumnRenamed("profile_id", "pp_df")
-    pp_df = pp_df.join(last_pos_date, pp_df["profile_id"] == last_pos_date["pp_df"], "left").drop("pp_df")
+    w = WF.Window.partitionBy("profile_id").orderBy(
+        F.col("startDate").desc_nulls_last(),
+        F.col("endDate").desc_nulls_first(),   # null endDate = ongoing -> wins ties
+    )
 
-
-    pp_df = pp_df.where("startDate = last_date").drop("last_date")
-
-    pp_count = pp_df.groupBy("profile_id").count().withColumnRenamed("profile_id", "c_profile_id")
-    pp_df = pp_df.join(pp_count, pp_df["profile_id"] == pp_count["c_profile_id"], "left").drop("c_profile_id")
-
-    g1 = pp_df.where("count = 1")
-    g2 = pp_df.where("count > 1")
-
-    g3 = g2.where("endDate IS NULL")
-    g4 = g2.where("endDate IS NOT NULL").join(g3.select("profile_id"), on="profile_id", how="left_anti")
-
-    last_end_date = g4.groupBy("profile_id").agg(F.max("endDate").alias("last_end_date")).withColumnRenamed("profile_id", "l_profile_id")
-    g4 = g4.join(last_end_date, g4["profile_id"]==last_end_date["l_profile_id"], "left").drop("l_profile_id")
-    g4 = g4.where("endDate = last_end_date").drop("last_end_date")
-
-    final = g1.unionByName(g3).unionByName(g4)
-    
-    pp_df = final.select("profile_id", "title", "startDate")
-
+    pp_df = (
+        profile_positions_df
+        .where("is_mission = TRUE")
+        .withColumn("rn", F.row_number().over(w))
+        .where("rn = 1")
+        .select(
+            "profile_id",
+            F.col("title").alias("last_mission_title"),
+            F.col("startDate").alias("last_mission_start_date"),
+            F.col("companyName").alias("last_mission_company_name"),
+        )
+    )
 
     ndf = custom_join(profile_df, pp_df, "profile", "pp", profile_df["id"] == pp_df["profile_id"], "left")
     ndf = ndf.drop("profile_id")
-    ndf = ndf.withColumnRenamed("startDate", "last_mission_start_date")
-    ndf = ndf.withColumnRenamed("title", "last_mission_title")
 
     return ndf
 
@@ -1635,8 +1629,8 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 def drop_variant_cols(df):
     cols_to_drop = list()
     for col in df.columns:
-        if isinstance(df.schema[ccol].dataType, (ty.VariantType, ty.StructType)):
-            cols_to_drop.append(ccol)
+        if isinstance(df.schema[col].dataType, (ty.VariantType, ty.StructType)):
+            cols_to_drop.append(col)
     ndf = df.drop(*cols_to_drop)
     return ndf
 
@@ -2312,6 +2306,7 @@ def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_qua
 
         if add_snapshot_col:
             pks.append(SNAPSHOT_COL)
+            new_pk_names.append(SNAPSHOT_COL)
         if isinstance(cols_to_extract, list):
             extraction_names = middle_table.get("extraction_names", None)
             if extraction_names is None:
@@ -2368,7 +2363,7 @@ def middle_table_pipe_maker(spark, catalog, read_path, target_schema, target_qua
                 }
             )
             def f3():
-                df = spark.readStream.table(read_path)
+                df = spark.read.table(read_path)
                 return middle_table_extractor(spark, df, pks, cols_to_extract, new_pk_names, extracted_cols_names, variant_paths)
     return None
 
@@ -2562,6 +2557,9 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
         base = add_profile_score_f(base)
     if table_name in ["certification"]:
         base = add_is_active_col(base, "endDate")
+    if table_name == "user":
+        base = explode_variant_list_column(spark, base, "connectedTalents", False, True)
+        base = extract_variant_keys(base, "connectedTalents", {"id": "STRING"})
 
     default_config_file_name = get_conf(spark, "file.default_config")
 
@@ -2582,6 +2580,8 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     middle_table = silver_config.get("middle_table", None)
     pk_cols = silver_config.get("pk_cols", None)
 
+    silver_df = base
+
     if variant_keys_to_extract is not None:
         if not isinstance(variant_keys_to_extract, dict):
             raise TypeError("variant keys to extract must be a dict. Col: Dict[key, format]")
@@ -2591,10 +2591,14 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     if filter_queries is not None:
         silver_df = filter_conditions(silver_df, filter_queries)
 
+    """
     if cols_to_drop is not None:
         silver_df = silver_df.drop(*cols_to_drop)
+    """
     if drop_metadata:
         silver_df = silver_df.drop(*METADATA_COLUMNS)
+        silver_df = silver_df.drop(REMAINING_PAYLOAD)
+    
 
     return silver_df
 
@@ -2621,9 +2625,9 @@ def silver_pipe_maker(spark, catalog, platform, table_name):
     silver_config = table_config.get("silver", None)
 
     if silver_config is not None:
-        middle_table = silver_config.get("middle_table", None)
-        if middle_table is not None:
-            middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table, True)
+        middle_table_config = silver_config.get("middle_table", None)
+        if middle_table_config is not None:
+            middle_table_pipe_maker(spark, catalog, target_path, f"silver_{platform}", "silver", table_name, middle_table_config, True)
 
     return None
 
@@ -2930,7 +2934,6 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
         worker = sparkSession.read.table(read_path_worker)
         cs = sparkSession.read.table(read_path_cs)
         l = sparkSession.read.table(read_path_leave)
-        worker = 
         return worker_process_2(worker, cs, l)
 
     if enable_quarantine:
@@ -2961,12 +2964,12 @@ def fact_cert_acr_process(gold_worker_table, cert_or_acr_table, cert_or_acc_alia
     # Left filters those profiles without a worker
     return joined
 
-def certifications_accreditation_and_workers_pipe(sparkSession, catalog):
+def certifications_accreditation_and_workers_pipe(spark, catalog):
 
-    platform_whoz = get_platform(sparkSession, "whoz")
-    platform_perso = get_platform(sparkSession, "perso")
-    gold_quality = get_quality(sparkSession, "gold")
-    silver_quality = get_quality(sparkSession, "silver")
+    platform_whoz = get_platform(spark, "whoz")
+    platform_perso = get_platform(spark, "perso")
+    gold_quality = get_quality(spark, "gold")
+    silver_quality = get_quality(spark, "silver")
 
     read_schema_whoz = schema_name_builder(silver_quality, platform_whoz)
     read_schema_perso = schema_name_builder(gold_quality, platform_perso)
@@ -3349,17 +3352,23 @@ def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, p
 
     wut_m_cols = get_matching_cols(worker_user, talent_df) # removed	++	createdDate	++	lastConnectionDate	++	language	++	createdBy	++	lastModifiedBy	++	gender	++	lastModifiedDate
     # We dont want to remove any of this columns and we rather keep what do they reference to
-    wut = custom_join(worker_user, talent_df, "user", "talent", worker_user["user_id"] == talent_df["userId"], "left", keep_history)
-    wut = wdrop("userId")
+    wut_ = custom_join(worker_user, talent_df, "user", "talent", worker_user["connectedTalents_id"] == talent_df["id"], "left", keep_history)
+    wut_ = wut_.drop("connectedTalents_id")
     # Need to rename id to talent_id
-    wut = wwithColumnRenamed("id", "talent_id")
+    wut_ = wut_.withColumnRenamed("id", "talent_id")
+
+    # A user may have multiple talents, so this may duplicate the worker, and obviusly the user id
 
 
-    wutp_m_cols = get_matching_cols(wut, profile_df) # status	++	DaysSince	++	permissionScope	++	federationId	++	qualificationIds	++	customFields
+    wutp_m_cols = get_matching_cols(wut_, profile_df) # status	++	DaysSince	++	permissionScope	++	federationId	++	qualificationIds	++	customFields
     # No need to rename, we keep both
-    wutp = custom_join(wut, profile_df, "talent", "profile", wut["talent_id"] == profile_df["talentId"], "left", keep_history)
+    wutp = custom_join(wut_, profile_df, "talent", "profile", wut_["talent_id"] == profile_df["talentId"], "left", keep_history)
     wutp = wutp.drop("talentId")
     wutp = wutp.withColumnRenamed("id", "profile_id")
+
+    # After this joins, a talent may (though shouldnt) have multiple profiles, and we know we have the same worker with multiple talents so we filter by profile completionRate
+
+    wutp = max_filter(wutp, ["worker_id", SNAPSHOT_COL], "completionRate")
 
     
     ndf = drop_variant_cols(wutp) # Required for the dashboards
@@ -3383,6 +3392,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
     read_table_user = table_name_builder("cleaned", "user")
     read_table_talent = table_name_builder("cleaned", "talent")
     read_table_profile = table_name_builder("cleaned", "profile")
+    read_table_profile_positions = table_name_builder("profile", "positions")
     target_table = table_name_builder("collab", "referential")
     target_table_history = table_name_builder("history", "profile")
 
@@ -3392,6 +3402,7 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
     read_path_user = f"{catalog}.{read_schema_whoz}.{read_table_user}"
     read_path_talent = f"{catalog}.{read_schema_whoz}.{read_table_talent}"
     read_path_profile = f"{catalog}.{read_schema_whoz}.{read_table_profile}"
+    read_path_profile_positions = f"{catalog}.{read_schema_whoz}.{read_table_profile_positions}"
     target_path = f"{catalog}.{target_schema}.{target_table}"
     target_path_history = f"{catalog}.{target_schema}.{target_table_history}"
 
@@ -3423,7 +3434,13 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
     )
     def f2():
         worker_profile = sparkSession.read.table(target_path_history)
-        ndf = max_filter(worker_profile, ["worker_id"], SNAPSHOT_COL)
+        profile_positions = sparkSession.read.table(read_path_profile_positions)
+        worker_profile = max_filter(worker_profile, ["worker_id"], SNAPSHOT_COL).drop(SNAPSHOT_COL)
+        profile_positions = max_filter(profile_positions, ["profile_id", "position_id"], SNAPSHOT_COL).drop(SNAPSHOT_COL)
+
+        worker_profile = worker_profile.withColumnRenamed("profile_id", "id")
+        ndf = add_last_mission_col_to_profile_df(worker_profile, profile_positions)
+        ndf = ndf.withColumnRenamed("id", "profile_id")
         return ndf
 
     if enable_quarantine:
@@ -3447,9 +3464,209 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
 
 
 
+def dimension_organization_pipe_maker(sparkSession, catalog):
+
+    platform_ana = get_platform(sparkSession, "analytic")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_analytic = schema_name_builder(silver_quality, platform_ana)
+    target_schema = schema_name_builder(gold_quality, platform_ana)
+
+    read_table_dep = table_name_builder("cleaned", "department")
+    read_table_sl = table_name_builder("cleaned", "service_line")
+    target_table = table_name_builder("dim", "organization")
+
+    read_table_path_dep = f"{catalog}.{read_schema_analytic}.{read_table_dep}"
+    read_table_path_sl = f"{catalog}.{read_schema_analytic}.{read_table_sl}"
+    target_table_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_table_path,
+        comment="Dimension Organization",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f():
+        dep_df = spark.read.table(read_table_path_dep)
+        sl_df = spark.read.table(read_table_path_sl)
+        dep_df = max_filter(dep_df, ["id"], SNAPSHOT_COL).drop(SNAPSHOT_COL)
+        sl_df = max_filter(sl_df, ["id"], SNAPSHOT_COL).drop(SNAPSHOT_COL)
+        ndf = make_department_service_line_zones(sparkSession, dep_df, sl_df)
+        ndf = ndf.drop("associated_service_line", "associated_practice", "service_line_associated_zone", "id", "practiceName", "dz_department_name")
+
+        cols_renames = {
+            "department_associated_zone": "zone_id",
+            "name": "zone_name",
+            "BUCU": "department_bucu",
+            "d_sl_z_3_department_name": "department_name",
+            "zone_name": "og_zone_name"
+        }
+
+        for col, rename in cols_renames.items():
+            ndf = ndf.withColumnRenamed(col, rename)
+
+        ndf = ndf.withColumn(
+            "zone_name",
+            F.coalesce(F.col("og_zone_name"), F.col("practice_zone_name"))
+        )
+        ndf = dim_organization_extra_columns(sparkSession, ndf)
+        ndf = drop_variant_cols(ndf)
+        return ndf
+
+    return None
+
+
+def dimension_site_pipe_maker(sparkSession, catalog):
+
+    platform_ana = get_platform(sparkSession, "analytic")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_analytic = schema_name_builder(silver_quality, platform_ana)
+    target_schema = schema_name_builder(gold_quality, platform_ana)
+
+    read_table_site = table_name_builder("cleaned", "site")
+    target_table = table_name_builder("dim", "site")
+
+    read_table_path_site = f"{catalog}.{read_schema_analytic}.{read_table_site}"
+    target_table_path = f"{catalog}.{target_schema}.{target_table}"
+
+    @dp.table(
+        name=target_table_path,
+        comment="Dimension Site",
+        table_properties={
+            "quality": gold_quality
+        }
+    )
+    def f():
+        site_df = spark.read.table(read_table_path_site)
+        site_df = max_filter(site_df, ["id"], SNAPSHOT_COL).drop(SNAPSHOT_COL)
+        ndf = map_site(sparkSession, site_df)
+        ndf = drop_variant_cols(ndf)
+        return ndf
+
+    return None
+
+
+def common_steps(df, pk_cols, cols_to_select=None):
+    ndf = drop_variant_cols(df)
+    ndf = max_filter(ndf, pk_cols, SNAPSHOT_COL).drop(SNAPSHOT_COL)
+
+    if cols_to_select is not None:
+        ndf = ndf.select(*cols_to_select)
+    return ndf
+
+def fact_tables_pipe_maker(sparkSession, catalog):
+
+    platform_whoz = get_platform(sparkSession, "whoz")
+    platform_perso = get_platform(sparkSession, "perso")
+    gold_quality = get_quality(sparkSession, "gold")
+    silver_quality = get_quality(sparkSession, "silver")
+
+    read_schema_whoz = schema_name_builder(silver_quality, platform_whoz)
+    read_schema_perso = schema_name_builder(gold_quality, platform_perso)
+    target_schema = schema_name_builder(gold_quality, platform_whoz)
+
+    read_table_cert = table_name_builder("cleaned", "certification")
+    read_table_acr = table_name_builder("cleaned", "accreditation")
+    read_table_worker = table_name_builder("fact", "workers")
+    read_table_edu = table_name_builder("profile", "educations")
+    read_table_pos = table_name_builder("profile", "positions")
+    read_table_apt = table_name_builder("profile", "aptitudes")
+    read_table_pro = table_name_builder("cleaned", "profile")
+    read_table_tal = table_name_builder("cleaned", "talent")
+    read_table_use = table_name_builder("cleaned", "user")
+    read_table_skill = table_name_builder("cleaned", "skill")
+
+    target_table_cert = table_name_builder("fact", "certification")
+    target_table_acr = table_name_builder("fact", "accreditation")
+    target_table_edu = table_name_builder("fact", "educations")
+    target_table_pos = table_name_builder("fact", "positions")
+    target_table_apt = table_name_builder("fact", "aptitudes")
+    target_table_pro = table_name_builder("fact", "profile")
+    target_table_tal = table_name_builder("", "talent")
+    target_table_use = table_name_builder("", "user")
+    target_table_skill = table_name_builder("dim", "skill")
+
+    read_path_worker = f"{catalog}.{read_schema_perso}.{read_table_worker}"
+    read_path_cert = f"{catalog}.{read_schema_whoz}.{read_table_cert}"
+    read_path_acr = f"{catalog}.{read_schema_whoz}.{read_table_acr}"
+    read_path_edu = f"{catalog}.{read_schema_whoz}.{read_table_edu}"
+    read_path_pos = f"{catalog}.{read_schema_whoz}.{read_table_pos}"
+    read_path_apt = f"{catalog}.{read_schema_whoz}.{read_table_apt}"
+    read_path_pro = f"{catalog}.{read_schema_whoz}.{read_table_pro}"
+    read_path_tal = f"{catalog}.{read_schema_whoz}.{read_table_tal}"
+    read_path_use = f"{catalog}.{read_schema_whoz}.{read_table_use}"
+    read_path_skill = f"{catalog}.{read_schema_whoz}.{read_table_skill}"
+
+    target_path_cert = f"{catalog}.{target_schema}.{target_table_cert}"
+    target_path_acr = f"{catalog}.{target_schema}.{target_table_acr}"
+    target_path_edu = f"{catalog}.{target_schema}.{target_table_edu}"
+    target_path_pos = f"{catalog}.{target_schema}.{target_table_pos}"
+    target_path_apt = f"{catalog}.{target_schema}.{target_table_apt}"
+    target_path_pro = f"{catalog}.{target_schema}.{target_table_pro}"
+    target_path_tal = f"{catalog}.{target_schema}.{target_table_tal}"
+    target_path_use = f"{catalog}.{target_schema}.{target_table_use}"
+    target_path_skill = f"{catalog}.{target_schema}.{target_table_skill}"
+
+    @dp.table(
+        name=target_path_skill,
+        comment="Fact Skills",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f_skill():
+        ndf = sparkSession.read.table(read_path_skill)
+        cols_to_select = [
+            F.col("id"),
+            F.col("type"),
+            F.col("granularity"),
+            F.col("nature"),
+            F.col("name_text").alias("name"),
+            F.col("description_text").alias("description")
+        ]
+        ndf = common_steps(ndf, ["id"], cols_to_select)
+        return ndf
+
+    @dp.table(
+        name=target_path_cert,
+        comment="Dim Skills",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f_certs():
+        ndf = sparkSession.read.table(read_path_cert)
+        cols_to_select = [
+            "id", "profileId",
+            "title", "description",
+            "endDate", "is_active"
+        ]
+        ndf = common_steps(ndf, ["id", "profileId"], cols_to_select)
+        return ndf
+
+    @dp.table(
+        name=target_path_apt,
+        comment="Fact Aptitudes",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f_apt():
+        apt = sparkSession.read.table(read_path_apt)
+        apt = common_steps(apt, ["profile_id", "aptitude_id"])
+        skill = sparkSession.read.table(target_path_skill) # We join with skill to add the skill data and maintain eveything one Join away (consecutive joins when you have a Many to Many relationship give problems)
+
+        ndf = custom_join(apt, skill, "aptitude", "skill", apt["concept_id"] == skill["id"], "left")
+        ndf = ndf.withColumnRenamed("description", "skill_description")
+        return ndf
 
 
 
+    return None
 
 
 
@@ -3644,7 +3861,7 @@ PLATFORM_TABLES = {
     "whoz": ["accreditation", "certification", "profile", "skill", "talent", "user"],
     "perso": ["collab_status", "leave", "workers"]
 }
-CATALOG = get_conf(spark, "catalog")
+CATALOG = "oxygen"#get_conf(spark, "catalog")
 #create_quarantine_table(spark, CATALOG)
 #create_quarantine_table_sanitize(spark, CATALOG)
 for platform, tables in PLATFORM_TABLES.items():
@@ -3656,3 +3873,4 @@ dimension_organization_pipe_maker(spark, CATALOG)
 dimension_site_pipe_maker(spark, CATALOG)
 make_dim_date_pipe_maker(CATALOG)
 worker_process_pipe_maker_2(spark, CATALOG)
+fact_tables_pipe_maker(spark, CATALOG)
