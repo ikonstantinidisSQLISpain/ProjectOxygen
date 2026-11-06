@@ -1259,6 +1259,37 @@ class ProfileScoreNamespace():
             ).otherwise("Not Ok")
         )
 
+        buckets = [
+            (0, 10, "0-10"),
+            (10, 20, "11-20"),
+            (20, 30, "21-30"),
+            (30, 40, "31-40"),
+            (40, 50, "41-50"),
+            (50, 60, "51-59"),
+            (60, 70, "60-70"),
+            (70, 80, "71-80"),
+            (80, 90, "81-90"),
+            (90, 100, "91-100")
+        ]
+
+        expr = None
+        for low, high, label in reversed(buckets):
+            if expr is None:
+                expr = F.when((
+                    (F.col("profileScore") > low)
+                    & (F.col("profileScore") <= high)
+                ), label)
+            else:
+                expr = expr.when((
+                    (F.col("profileScore") > low)
+                    & (F.col("profileScore") <= high)
+                ), label)
+        expr = expr.otherwise(None)
+
+        ndf = ndf.withColumn(
+            "profileScore_bucket",
+            expr
+        )
         return ndf
 
     # End of class
@@ -1574,7 +1605,7 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 
     expr3 = None
     for row in zpr.select("Zone", "service_line_contains", "Region").collect():
-        if row["service_line_contains"] is None:
+        if row["service_line_contains"] is not None:
             constraint = (
                 (F.col("zone_name") == row["Zone"])
                 & (F.col("service_line_name").contains(row["service_line_contains"]))
@@ -1605,14 +1636,14 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
             expr4 = F.when(
                 (
                     (F.col("region") == row["Region"])
-                    & (F.col("department_name").contains("Practice_contains"))
+                    & (F.col("department_name").contains(row["Practice_contains"]))
                 ), row["PracticeManager"]
             )
         else:
             expr4 = expr4.when(
                 (
                     (F.col("region") == row["Region"])
-                    & (F.col("department_name").contains("Practice_contains"))
+                    & (F.col("department_name").contains(row["Practice_contains"]))
                 ), row["PracticeManager"]
             )
     expr4 = expr4.otherwise(None)
@@ -1623,6 +1654,24 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr4
     )
 
+    slnv2 = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_name_v2"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr5 = F.when(F.col("service_line_name").isNull(), "Other / no service line")
+    for row in slnv2.select("service_line_name_contains", "service_line_v2").collect():
+        expr5 = expr5.when(
+            F.col("service_line_name").contains(row["service_line_name_contains"]), 
+            row["service_line_v2"]
+        )
+    expr5 = expr5.otherwise(F.col("service_line_name"))
+
+    ndf = ndf.withColumn(
+        "service_line_merged",
+        expr5
+    )
 
     return ndf
 
@@ -1645,10 +1694,84 @@ def get_matching_cols(df1, df2):
 
 
 
+def add_data_quality_issues(worker_df):
+
+    ndf = collab_df.withColumn(
+        "missing_gcm_job",
+        F.when(
+            (
+                (F.col("gcm_job").isNull())
+                | (F.col("gcm_job") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_gcm_job_family",
+        F.when(
+            (
+                (F.col("gcm_job_family").isNull())
+                | (F.col("gcm_job_family") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_department",
+        F.when(
+            F.col("department_id").isNull(),
+            True
+        ).otherwise(False)
+    )
+    # GCM Job undefined | GCM Job Family undefined | Department undefined
+    sep = " | "
+    ndf = ndf.withColumn(
+        "data_quality",
+        (
+            f"GCM Job undefined"*F.col("missing_gcm_job")
+            + "GCM Job Family undefined"*F.col("missing_gcm_job_family")
+        )
+    )
+
+    return ndf
 
 
+import re
 
+def remove_special_characters(df, col):
+    SPECIAL_CHARACTERS = [
+        "¿", "?", "¡", "!", "(", ")", "[", "]", "{", "}",
+        "<", ">", "/", "\\", "|", ":", ";", '"', "'",
+        ".", "~", "^", "*", "+", "=", "@", "#", "$", "%",
+        "©", "®", "™", "§", "¶", "°", "±", "×",
+        "÷", "€", "£", "¥", "¢"
+    ]
 
+    expr = F.col(col)
+    for character in SPECIAL_CHARACTERS:
+        expr = F.regexp_replace(expr, re.escape(character), "")
+
+    ndf = df.withColumn("temporal", expr)
+    ndf = ndf.drop(col)
+    ndf = ndf.withColumnRenamed("temporal", col)
+    return ndf
+
+def remove_rows_with_empty_char(df, col):
+    return df.where(f"{col} != ''")
+
+def merge_aptitude_skill(fact_aptitudes):
+    expr = F.when(
+        F.col("skill_name").isNotNull(),
+        F.col("skill_name")
+    ).otherwise(F.col("aptitude_name"))
+
+    ndf = fact_aptitudes.withColumn(
+        "aptitude_name_v2",
+        expr
+    )
+    return ndf
 
 
 
@@ -2551,12 +2674,12 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     if table_name == "skill":
         base = extract_all_english_terms(spark, base)
     if table_name == "profile":
-        base = add_profile_score_f(base)
         base = add_bucket_and_status(base, "completionRate")
         base = add_date_status_prof(base, "lastModifiedDate")
         base = add_profile_score_f(base)
     if table_name in ["certification"]:
         base = add_is_active_col(base, "endDate")
+        base = remove_rows_with_empty_char(base, "title")
     if table_name == "user":
         base = explode_variant_list_column(spark, base, "connectedTalents", False, True)
         base = extract_variant_keys(base, "connectedTalents", {"id": "STRING"})
@@ -3315,6 +3438,41 @@ import pyspark.sql.types as ty
 from pathlib import Path
 
 
+def add_tl_rh_and_direct_manager_data(worker_df):
+
+    names_and_mails = worker_df.select("id", "display_name", "mail")
+    names_and_mails = names_and_mails.withColumnsRenamed({
+        "id": "v2_id",
+        "display_name": "v2_name",
+        "mail": "v2_mail"
+    })
+
+    ndf = custom_join(
+        worker_df, names_and_mails, 
+        "worker", "v2", 
+        worker_df["tl_rh_id"] == names_and_mails["v2_id"],
+        "left"
+    )
+    ndf = ndf.drop("v2_id")
+    ndf = ndf.withColumnsRenamed({
+        "v2_name": "tl_rh_name",
+        "v2_mail": "tl_rh_mail"
+    })
+
+    ndf = custom_join(
+        ndf, names_and_mails,
+        "worker", "v2",
+        ndf["direct_manager_id"] == names_and_mails["v2_id"],
+        "left"
+    )
+    ndf = ndf.drop("v2_id")
+    ndf = ndf.withColumnsRenamed({
+        "v2_name": "direct_manager_name",
+        "v2_mail": "direct_manager_mail"
+    })
+
+    return ndf
+
 
 def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, profile_df, keep_history = False):
 
@@ -3326,6 +3484,7 @@ def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, p
         talent_df = max_filter(talent_df, ["id"], SNAPSHOT_COL)
         profile_df = max_filter(profile_df, ["id"], SNAPSHOT_COL)
 
+    worker_df = add_tl_rh_and_direct_manager_data(worker_df)
     wc_m_cols = get_matching_cols(worker_df, collab_df) # department_id	++	service_line_id	++	site_id	++	matricule
     worker = custom_join(worker_df, collab_df, "worker", "collab", worker_df["id"] == collab_df["uid"], "inner", keep_history)
     worker = worker.drop("uid", *[f"collab_{col}" for col in wc_m_cols])
@@ -3658,10 +3817,16 @@ def fact_tables_pipe_maker(sparkSession, catalog):
     def f_apt():
         apt = sparkSession.read.table(read_path_apt)
         apt = common_steps(apt, ["profile_id", "aptitude_id"])
+        apt = remove_special_characters(apt, "name")
+        apt = remove_rows_with_empty_char(apt, "name")
+
         skill = sparkSession.read.table(target_path_skill) # We join with skill to add the skill data and maintain eveything one Join away (consecutive joins when you have a Many to Many relationship give problems)
+        skill = remove_special_characters(skill, "name")
+        skill = remove_rows_with_empty_char(skill, "name")
 
         ndf = custom_join(apt, skill, "aptitude", "skill", apt["concept_id"] == skill["id"], "left")
         ndf = ndf.withColumnRenamed("description", "skill_description")
+        ndf = merge_aptitude_skill(ndf)
         return ndf
 
 

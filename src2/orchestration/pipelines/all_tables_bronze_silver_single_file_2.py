@@ -1259,6 +1259,37 @@ class ProfileScoreNamespace():
             ).otherwise("Not Ok")
         )
 
+        buckets = [
+            (0, 10, "0-10"),
+            (10, 20, "11-20"),
+            (20, 30, "21-30"),
+            (30, 40, "31-40"),
+            (40, 50, "41-50"),
+            (50, 60, "51-59"),
+            (60, 70, "60-70"),
+            (70, 80, "71-80"),
+            (80, 90, "81-90"),
+            (90, 100, "91-100")
+        ]
+
+        expr = None
+        for low, high, label in reversed(buckets):
+            if expr is None:
+                expr = F.when((
+                    (F.col("profileScore") > low)
+                    & (F.col("profileScore") <= high)
+                ), label)
+            else:
+                expr = expr.when((
+                    (F.col("profileScore") > low)
+                    & (F.col("profileScore") <= high)
+                ), label)
+        expr = expr.otherwise(None)
+
+        ndf = ndf.withColumn(
+            "profileScore_bucket",
+            expr
+        )
         return ndf
 
     # End of class
@@ -1574,7 +1605,7 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
 
     expr3 = None
     for row in zpr.select("Zone", "service_line_contains", "Region").collect():
-        if row["service_line_contains"] is None:
+        if row["service_line_contains"] is not None:
             constraint = (
                 (F.col("zone_name") == row["Zone"])
                 & (F.col("service_line_name").contains(row["service_line_contains"]))
@@ -1605,14 +1636,14 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
             expr4 = F.when(
                 (
                     (F.col("region") == row["Region"])
-                    & (F.col("department_name").contains("Practice_contains"))
+                    & (F.col("department_name").contains(row["Practice_contains"]))
                 ), row["PracticeManager"]
             )
         else:
             expr4 = expr4.when(
                 (
                     (F.col("region") == row["Region"])
-                    & (F.col("department_name").contains("Practice_contains"))
+                    & (F.col("department_name").contains(row["Practice_contains"]))
                 ), row["PracticeManager"]
             )
     expr4 = expr4.otherwise(None)
@@ -1623,6 +1654,24 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr4
     )
 
+    slnv2 = spark.read.csv(
+        get_conf(sparkSession, "file.encode.service_line_name_v2"),
+        header=True,
+        inferSchema=True
+    )
+
+    expr5 = F.when(F.col("service_line_name").isNull(), "Other / no service line")
+    for row in slnv2.select("service_line_name_contains", "service_line_v2").collect():
+        expr5 = expr5.when(
+            F.col("service_line_name").contains(row["service_line_name_contains"]), 
+            row["service_line_v2"]
+        )
+    expr5 = expr5.otherwise(F.col("service_line_name"))
+
+    ndf = ndf.withColumn(
+        "service_line_merged",
+        expr5
+    )
 
     return ndf
 
@@ -1645,10 +1694,84 @@ def get_matching_cols(df1, df2):
 
 
 
+def add_data_quality_issues(worker_df):
+
+    ndf = collab_df.withColumn(
+        "missing_gcm_job",
+        F.when(
+            (
+                (F.col("gcm_job").isNull())
+                | (F.col("gcm_job") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_gcm_job_family",
+        F.when(
+            (
+                (F.col("gcm_job_family").isNull())
+                | (F.col("gcm_job_family") == "")
+            ),
+            True
+        ).otherwise(False)
+    )
+
+    ndf = ndf.withColumn(
+        "missing_department",
+        F.when(
+            F.col("department_id").isNull(),
+            True
+        ).otherwise(False)
+    )
+    # GCM Job undefined | GCM Job Family undefined | Department undefined
+    sep = " | "
+    ndf = ndf.withColumn(
+        "data_quality",
+        (
+            f"GCM Job undefined"*F.col("missing_gcm_job")
+            + "GCM Job Family undefined"*F.col("missing_gcm_job_family")
+        )
+    )
+
+    return ndf
 
 
+import re
 
+def remove_special_characters(df, col):
+    SPECIAL_CHARACTERS = [
+        "¿", "?", "¡", "!", "(", ")", "[", "]", "{", "}",
+        "<", ">", "/", "\\", "|", ":", ";", '"', "'",
+        ".", "~", "^", "*", "+", "=", "@", "#", "$", "%",
+        "©", "®", "™", "§", "¶", "°", "±", "×",
+        "÷", "€", "£", "¥", "¢"
+    ]
 
+    expr = F.col(col)
+    for character in SPECIAL_CHARACTERS:
+        expr = F.regexp_replace(expr, re.escape(character), "")
+
+    ndf = df.withColumn("temporal", expr)
+    ndf = ndf.drop(col)
+    ndf = ndf.withColumnRenamed("temporal", col)
+    return ndf
+
+def remove_rows_with_empty_char(df, col):
+    return df.where(f"{col} != ''")
+
+def merge_aptitude_skill(fact_aptitudes):
+    expr = F.when(
+        F.col("skill_name").isNotNull(),
+        F.col("skill_name")
+    ).otherwise(F.col("aptitude_name"))
+
+    ndf = fact_aptitudes.withColumn(
+        "aptitude_name_v2",
+        expr
+    )
+    return ndf
 
 
 

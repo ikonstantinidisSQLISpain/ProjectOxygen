@@ -11,6 +11,41 @@ import common.gold_processing.dimensions_and_facts as daf
 from pathlib import Path
 
 
+def add_tl_rh_and_direct_manager_data(worker_df):
+
+    names_and_mails = worker_df.select("id", "display_name", "mail")
+    names_and_mails = names_and_mails.withColumnsRenamed({
+        "id": "v2_id",
+        "display_name": "v2_name",
+        "mail": "v2_mail"
+    })
+
+    ndf = ut.custom_join(
+        worker_df, names_and_mails, 
+        "worker", "v2", 
+        worker_df["tl_rh_id"] == names_and_mails["v2_id"],
+        "left"
+    )
+    ndf = ndf.drop("v2_id")
+    ndf = ndf.withColumnsRenamed({
+        "v2_name": "tl_rh_name",
+        "v2_mail": "tl_rh_mail"
+    })
+
+    ndf = ut.custom_join(
+        ndf, names_and_mails,
+        "worker", "v2",
+        ndf["direct_manager_id"] == names_and_mails["v2_id"],
+        "left"
+    )
+    ndf = ndf.drop("v2_id")
+    ndf = ndf.withColumnsRenamed({
+        "v2_name": "direct_manager_name",
+        "v2_mail": "direct_manager_mail"
+    })
+
+    return ndf
+
 
 def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, profile_df, keep_history = False):
 
@@ -22,6 +57,7 @@ def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, p
         talent_df = ut.max_filter(talent_df, ["id"], c.SNAPSHOT_COL)
         profile_df = ut.max_filter(profile_df, ["id"], c.SNAPSHOT_COL)
 
+    worker_df = add_tl_rh_and_direct_manager_data(worker_df)
     wc_m_cols = ut.get_matching_cols(worker_df, collab_df) # department_id	++	service_line_id	++	site_id	++	matricule
     worker = ut.custom_join(worker_df, collab_df, "worker", "collab", worker_df["id"] == collab_df["uid"], "inner", keep_history)
     worker = worker.drop("uid", *[f"collab_{col}" for col in wc_m_cols])
@@ -354,10 +390,16 @@ def fact_tables_pipe_maker(sparkSession, catalog):
     def f_apt():
         apt = sparkSession.read.table(read_path_apt)
         apt = common_steps(apt, ["profile_id", "aptitude_id"])
+        apt = ut.remove_special_characters(apt, "name")
+        apt = ut.remove_rows_with_empty_char(apt, "name")
+
         skill = sparkSession.read.table(target_path_skill) # We join with skill to add the skill data and maintain eveything one Join away (consecutive joins when you have a Many to Many relationship give problems)
+        skill = ut.remove_special_characters(skill, "name")
+        skill = ut.remove_rows_with_empty_char(skill, "name")
 
         ndf = ut.custom_join(apt, skill, "aptitude", "skill", apt["concept_id"] == skill["id"], "left")
         ndf = ndf.withColumnRenamed("description", "skill_description")
+        ndf = ut.merge_aptitude_skill(ndf)
         return ndf
 
 

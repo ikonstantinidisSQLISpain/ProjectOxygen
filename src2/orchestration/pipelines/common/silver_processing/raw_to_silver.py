@@ -30,12 +30,12 @@ def from_raw_to_full_silver_steps(spark, platform, table_name, raw_df):
     if table_name == "skill":
         base = ut.extract_all_english_terms(spark, base)
     if table_name == "profile":
-        base = ut.add_profile_score_f(base)
         base = ut.add_bucket_and_status(base, "completionRate")
         base = ut.add_date_status_prof(base, "lastModifiedDate")
         base = ut.add_profile_score_f(base)
     if table_name in ["certification"]:
         base = ut.add_is_active_col(base, "endDate")
+        base = ut.remove_rows_with_empty_char(base, "title")
     if table_name == "user":
         base = ut.explode_variant_list_column(spark, base, "connectedTalents", False, True)
         base = ut.extract_variant_keys(base, "connectedTalents", {"id": "STRING"})
