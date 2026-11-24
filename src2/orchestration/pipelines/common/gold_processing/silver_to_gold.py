@@ -11,20 +11,24 @@ import common.gold_processing.dimensions_and_facts as daf
 from pathlib import Path
 
 
-def add_tl_rh_and_direct_manager_data(worker_df):
+def add_tl_rh_and_direct_manager_data(worker_df, keep_history):
 
-    names_and_mails = worker_df.select("id", "display_name", "mail")
+    cols = ["id", "display_name", "mail"] + ([c.SNAPSHOT_COL] if keep_history else [])
+    names_and_mails = worker_df.select(*cols)
     names_and_mails = names_and_mails.withColumnsRenamed({
         "id": "v2_id",
         "display_name": "v2_name",
         "mail": "v2_mail"
     })
+    names_and_mails = names_and_mails.withColumn(c.SNAPSHOT_COL, F.col(c.SNAPSHOT_COL))
+    # This forces a reasign in ID for that column, allowing the join
 
     ndf = ut.custom_join(
         worker_df, names_and_mails, 
         "worker", "v2", 
         worker_df["tl_rh_id"] == names_and_mails["v2_id"],
-        "left"
+        "left",
+        keep_history
     )
     ndf = ndf.drop("v2_id")
     ndf = ndf.withColumnsRenamed({
@@ -36,7 +40,8 @@ def add_tl_rh_and_direct_manager_data(worker_df):
         ndf, names_and_mails,
         "worker", "v2",
         ndf["direct_manager_id"] == names_and_mails["v2_id"],
-        "left"
+        "left",
+        keep_history
     )
     ndf = ndf.drop("v2_id")
     ndf = ndf.withColumnsRenamed({
@@ -50,14 +55,14 @@ def add_tl_rh_and_direct_manager_data(worker_df):
 def worker_profile_process(worker_df, collab_df, leave_df, user_df, talent_df, profile_df, keep_history = False):
 
     if not keep_history:
-        worker_df = ut.max_filter(worker_df, ["id"], c.SNAPSHOT_COL)
-        collab_df = ut.max_filter(collab_df, ["uid"], c.SNAPSHOT_COL)
-        leave_df = ut.max_filter(leave_df, ["uid"], c.SNAPSHOT_COL)
-        user_df = ut.max_filter(user_df, ["id"], c.SNAPSHOT_COL)
-        talent_df = ut.max_filter(talent_df, ["id"], c.SNAPSHOT_COL)
-        profile_df = ut.max_filter(profile_df, ["id"], c.SNAPSHOT_COL)
+        worker_df = ut.max_filter(worker_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        collab_df = ut.max_filter(collab_df, ["uid"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        leave_df = ut.max_filter(leave_df, ["uid"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        user_df = ut.max_filter(user_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        talent_df = ut.max_filter(talent_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        profile_df = ut.max_filter(profile_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
 
-    worker_df = add_tl_rh_and_direct_manager_data(worker_df)
+    worker_df = add_tl_rh_and_direct_manager_data(worker_df, keep_history)
     wc_m_cols = ut.get_matching_cols(worker_df, collab_df) # department_id	++	service_line_id	++	site_id	++	matricule
     worker = ut.custom_join(worker_df, collab_df, "worker", "collab", worker_df["id"] == collab_df["uid"], "inner", keep_history)
     worker = worker.drop("uid", *[f"collab_{col}" for col in wc_m_cols])
@@ -167,8 +172,8 @@ def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
     def f2():
         worker_profile = sparkSession.read.table(target_path_history)
         profile_positions = sparkSession.read.table(read_path_profile_positions)
-        worker_profile = ut.max_filter(worker_profile, ["worker_id"], c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
-        profile_positions = ut.max_filter(profile_positions, ["profile_id", "position_id"], c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
+        worker_profile = ut.max_filter(worker_profile, ["worker_id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        profile_positions = ut.max_filter(profile_positions, ["profile_id", "position_id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
 
         worker_profile = worker_profile.withColumnRenamed("profile_id", "id")
         ndf = ut.add_last_mission_col_to_profile_df(worker_profile, profile_positions)
@@ -223,8 +228,8 @@ def dimension_organization_pipe_maker(sparkSession, catalog):
     def f():
         dep_df = spark.read.table(read_table_path_dep)
         sl_df = spark.read.table(read_table_path_sl)
-        dep_df = ut.max_filter(dep_df, ["id"], c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
-        sl_df = ut.max_filter(sl_df, ["id"], c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
+        dep_df = ut.max_filter(dep_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
+        sl_df = ut.max_filter(sl_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
         ndf = ut.make_department_service_line_zones(sparkSession, dep_df, sl_df)
         ndf = ndf.drop("associated_service_line", "associated_practice", "service_line_associated_zone", "id", "practiceName", "dz_department_name")
 
@@ -274,7 +279,7 @@ def dimension_site_pipe_maker(sparkSession, catalog):
     )
     def f():
         site_df = spark.read.table(read_table_path_site)
-        site_df = ut.max_filter(site_df, ["id"], c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
+        site_df = ut.max_filter(site_df, ["id"], c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
         ndf = ut.map_site(sparkSession, site_df)
         ndf = ut.drop_variant_cols(ndf)
         return ndf
@@ -284,7 +289,7 @@ def dimension_site_pipe_maker(sparkSession, catalog):
 
 def common_steps(df, pk_cols, cols_to_select=None):
     ndf = ut.drop_variant_cols(df)
-    ndf = ut.max_filter(ndf, pk_cols, c.SNAPSHOT_COL).drop(c.SNAPSHOT_COL)
+    ndf = ut.max_filter(ndf, pk_cols, c.SNAPSHOT_COL, True).drop(c.SNAPSHOT_COL)
 
     if cols_to_select is not None:
         ndf = ndf.select(*cols_to_select)

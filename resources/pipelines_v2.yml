@@ -117,6 +117,9 @@ resources:
         file.encode.zone_practice_region: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/zone_region.csv"
         file.encode.region_practice_manager: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/region_practice_manager.csv"
         file.encode.service_line_name_v2: "/Volumes/oxygen_dev/landing/sharepoint_test/metadata/mappings/service_line_name_to_v2.csv"
+
+        ##
+        file.managed.inferred_schema_csv_location: "/Volumes/oxygen_dev/landing/sharepoint_test/_schemas/csv"
       libraries:
         - file:
             path: "../src2/orchestration/pipelines/all_tables_bronze_silver_single_file_v2.py"

@@ -175,7 +175,7 @@ federationId:
     null_percen: 0
     unique_percen: 0
 completionDetails:
-  description:
+  description: Details about completion rate.
   type: dict
   nullable: false
   is_pk: false
@@ -198,7 +198,7 @@ completionRate:
     notes:
       - percentage, range(0, 1)
 completionRateLastComputedDate:
-  description:
+  description: Last date when completion rate was calculated.
   type: date
   nullable: true
   is_pk: false
@@ -247,7 +247,7 @@ createdDate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
 customFields:
   description: An instantiation of custom fields for the given entity.
   type: list[dict]
@@ -260,7 +260,7 @@ customFields:
     null_percen: 0
     unique_percen: 0
 functionalDomains:
-  description:
+  description: Functional domains.
   type: list
   nullable: false
   is_pk: false
@@ -281,7 +281,7 @@ headline:
     null_percen: 0.171
     unique_percen: 0
 lastExplicitUpdate:
-  description:
+  description: Last date when profile was updated.
   type: date
   nullable: true
   is_pk: false
@@ -299,11 +299,11 @@ lastExplicitUpdate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
   notes:
     - Does not appear in the API.
 lastExplicitUpdateBy:
-  description:
+  description: User who did the last update on the profile.
   type: str
   nullable: false
   is_pk: false
@@ -339,7 +339,7 @@ lastModifiedDate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
 links:
   description: URLs to external resources, such as LinkedIn or social media, describing the profile. Displays in the Social networks field in the UI.
   type: list[str]
@@ -350,7 +350,7 @@ links:
     null_percen: 0
     unique_percen: 0
 permissionScope:
-  description: 
+  description: profile's user persmissions.
   type: str
   nullable: false
   is_pk: false
@@ -381,7 +381,7 @@ removed:
     null_percen: 0
     unique_percen: 0
 resumeRelationStatus:
-  description:
+  description: ----
   type: str
   nullable: false
   is_pk: false
@@ -392,7 +392,7 @@ resumeRelationStatus:
   notes:
     - Does not appear in the API.
 schedules:
-  description:
+  description: ----
   type: list
   nullable: false
   is_pk: false
@@ -403,7 +403,7 @@ schedules:
   notes:
     - does not appear in the API.
 skillRatings:
-  description:
+  description: ----
   type: list[dict]
   nullable: false
   is_pk: false
@@ -428,7 +428,7 @@ status:
       - VALIDATED
       - SUBMITTED
 targetFunctionalDomains:
-  description:
+  description: ----
   type: list[str]
   nullable: false
   is_pk: false
@@ -439,7 +439,7 @@ targetFunctionalDomains:
   notes:
     - Does not appear in the API.
 targetSkillRatings:
-  description:
+  description: ----
   type: list[str]
   nullable: false
   is_pk: false
@@ -449,7 +449,7 @@ targetSkillRatings:
     null_percen: 0
     unique_percen: 0
 travelRange:
-  description:
+  description: ----
   type: str
   nullable: false
   is_pk: false

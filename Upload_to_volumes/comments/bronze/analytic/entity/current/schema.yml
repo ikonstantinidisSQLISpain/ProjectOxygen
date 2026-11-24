@@ -126,7 +126,8 @@ staff_manager:
   is_fk: false
   quality:
     null_percen: 0
-    unique_percen: 0referential_integrity: Should be granted.
+    unique_percen: 0
+    referential_integrity: Should be granted.
   nested_structures: True
 
 whoz_key_A:

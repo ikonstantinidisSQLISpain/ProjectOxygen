@@ -164,7 +164,7 @@ def worker_process_2(worker, collab_status, leave):
 
     return ndf
 
-def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
+def worker_process_pipe_maker_bad(sparkSession, catalog, enable_quarantine=False):
 
     platform_whoz = ut.get_platform(sparkSession, "whoz")
     platform_perso = ut.get_platform(sparkSession, "perso")

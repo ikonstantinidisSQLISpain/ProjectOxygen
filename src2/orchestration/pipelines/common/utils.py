@@ -1335,8 +1335,9 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
 
     if keep_history:
         join_on_cond = (join_on_cond
-                        & (left_df[c.SNAPSHOT_COL] == right_df[c.SNAPSHOT_COL])
+                        & (l[c.SNAPSHOT_COL] == r[c.SNAPSHOT_COL])
         )
+
     ndf = l.join(
         r,
         join_on_cond,
@@ -1371,7 +1372,7 @@ def create_quarantine_table_sanitize(spark, catalog):
     return None
 
 
-def max_filter(df, pk_cols, col_to_select):
+def max_filter(df, pk_cols, col_to_select, global_filter = False):
 
     if not isinstance(pk_cols, (str, list)):
         raise TypeError("pk_cols must be a list or str")
@@ -1399,6 +1400,15 @@ def max_filter(df, pk_cols, col_to_select):
     ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
     ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     """
+    if global_filter:
+        max_df = df.agg(F.max(col_to_select).alias("_max_val"))
+        return (
+            df.crossJoin(F.broadcast(max_df))
+            .where(F.col(col_to_select) == F.col("_max_val"))
+            .drop("_max_val")
+        )
+
+
     window = WF.Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
 
     ndf = (
@@ -1527,17 +1537,15 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
 
 
-
+import pandas as pd
 
 def dim_organization_extra_columns(sparkSession, dim_org_df):
 
-    slf = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_name_family"),
-        header=True,
-        inferSchema=True)
+    slf = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_name_family"))
     
     expr = None
-    for row in slf.select("ServiceLineName_contains", "Family").collect():
+    for _, row in slf[["ServiceLineName_contains", "Family"]].iterrows():
         if expr is None:
             expr = F.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
         else:
@@ -1548,14 +1556,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr
     )
     
-    slm = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_zone_manager"),
-        header=True,
-        inferSchema=True
+    slm = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_zone_manager")
     )
 
     expr2 = None
-    for row in slm.select("Zone", "Family", "Manager").collect():
+    for _, row in slm[["Zone", "Family", "Manager"]].iterrows():
         if expr2 is None:
             expr2 = F.when(
                 (
@@ -1577,14 +1583,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
     )
 
 
-    zpr = spark.read.csv(
-        get_conf(sparkSession, "file.encode.zone_practice_region"),
-        header=True,
-        inferSchema=True
+    zpr = pd.read_csv(
+        get_conf(sparkSession, "file.encode.zone_practice_region")
     )
 
     expr3 = None
-    for row in zpr.select("Zone", "service_line_contains", "Region").collect():
+    for _, row in zpr[["Zone", "service_line_contains", "Region"]].iterrows():
         if row["service_line_contains"] is not None:
             constraint = (
                 (F.col("zone_name") == row["Zone"])
@@ -1604,14 +1608,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr3
     )
 
-    rpm = spark.read.csv(
-        get_conf(sparkSession, "file.encode.region_practice_manager"),
-        header=True,
-        inferSchema=True
+    rpm = pd.read_csv(
+        get_conf(sparkSession, "file.encode.region_practice_manager")
     )
 
     expr4 = None
-    for row in rpm.select("Region", "Practice_contains", "PracticeManager").collect():
+    for _, row in rpm[["Region", "Practice_contains", "PracticeManager"]].iterrows():
         if expr4 is None:
             expr4 = F.when(
                 (
@@ -1634,14 +1636,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr4
     )
 
-    slnv2 = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_name_v2"),
-        header=True,
-        inferSchema=True
+    slnv2 = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_name_v2")
     )
 
     expr5 = F.when(F.col("service_line_name").isNull(), "Other / no service line")
-    for row in slnv2.select("service_line_name_contains", "service_line_v2").collect():
+    for _, row in slnv2[["service_line_name_contains", "service_line_v2"]].iterrows():
         expr5 = expr5.when(
             F.col("service_line_name").contains(row["service_line_name_contains"]), 
             row["service_line_v2"]
@@ -1755,7 +1755,19 @@ def merge_aptitude_skill(fact_aptitudes):
 
 
 
+def set_types(df, type_mapping_dict: dict):
+    """
+    type_mapping_dict
+    """
 
+    ndf = df
+    for col, col_type in type_mapping_dict.items():
+        ndf.withColumn(
+            col,
+            F.col(col).cast(col_type)
+        )
+
+    return ndf
 
 
 

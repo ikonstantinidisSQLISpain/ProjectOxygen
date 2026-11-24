@@ -30,6 +30,52 @@ def make_date_range():
     )
     return df
 
+def make_seconds_in_day_range():
+
+    n_seconds = 24*60*60
+
+    seconds = (
+        spark.range(n_seconds)
+        .select(F.col("id").alias("sec_of_day"))
+        .withColumn("hour", F.floor(F.col("sec_of_day") / 3600).cast("int"))
+        .withColumn("minute", F.floor((F.col("sec_of_day") % 3600) / 60).cast("int"))
+        .withColumn("second", (F.col("sec_of_day") % 60).cast("int"))
+        .withColumn(
+            "time",
+            F.concat_ws(
+                ":",
+                F.lpad(F.col("hour").cast("string"), 2, "0"),
+                F.lpad(F.col("minute").cast("string"), 2, "0"),
+                F.lpad(F.col("second").cast("string"), 2, "0"),
+            ),
+        )
+    )
+
+    seconds = (
+        seconds
+        .withColumn(
+            "am_pm",
+            F.when(F.col("hour") < 12, F.lit("AM")).otherwise(F.lit("PM"))
+        )
+        .withColumn(
+            "hour_12",
+            F.when(F.col("hour") % 12 == 0, F.lit(12))
+            .otherwise(F.col("hour") % 12)
+            .cast("int")
+        )
+        .withColumn(
+            "time_12",
+            F.concat_ws(
+                ":",
+                F.lpad(F.col("hour_12").cast("string"), 2, "0"),
+                F.lpad(F.col("minute").cast("string"), 2, "0"),
+                F.lpad(F.col("second").cast("string"), 2, "0"),
+            ),
+        )
+    )
+
+    return seconds
+
 # ------------------------------------------------------------
 # Nombres de días y meses en español
 # ------------------------------------------------------------
@@ -163,6 +209,17 @@ def make_dim_date_pipe_maker(catalog):
     def f():
         return make_calendar_df()
 
+    TABLE_NAME_HOUR = f"{catalog}.gold_date.dim_hour"
+
+    @dp.table(
+        name= TABLE_NAME_HOUR,
+        comment="Dimension Hour. Adds the daily time metadata.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f2():
+        return make_seconds_in_day_range()
+
     return None
 
-#print(f"Tabla '{TABLE_NAME}' creada correctamente.")

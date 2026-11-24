@@ -1,5 +1,5 @@
 description: The data represents the fact that are meant to be studied in analytics reports.
-grain: 'Each row represents a worker.'
+grain: 'Each row represents a worker and its Whoz data.'
 source:
   origin: ''
   data:

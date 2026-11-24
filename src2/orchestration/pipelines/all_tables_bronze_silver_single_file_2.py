@@ -1355,8 +1355,9 @@ def custom_join(left_df, right_df, alias_left, alias_right, join_on_cond, how_mo
 
     if keep_history:
         join_on_cond = (join_on_cond
-                        & (left_df[SNAPSHOT_COL] == right_df[SNAPSHOT_COL])
+                        & (l[SNAPSHOT_COL] == r[SNAPSHOT_COL])
         )
+
     ndf = l.join(
         r,
         join_on_cond,
@@ -1391,7 +1392,7 @@ def create_quarantine_table_sanitize(spark, catalog):
     return None
 
 
-def max_filter(df, pk_cols, col_to_select):
+def max_filter(df, pk_cols, col_to_select, global_filter = False):
 
     if not isinstance(pk_cols, (str, list)):
         raise TypeError("pk_cols must be a list or str")
@@ -1419,6 +1420,15 @@ def max_filter(df, pk_cols, col_to_select):
     ndf = ndf.where(f"{col_to_select} == max_{col_to_select}")
     ndf = ndf.drop(f"max_{col_to_select}").drop(*c_to_drop)
     """
+    if global_filter:
+        max_df = df.agg(F.max(col_to_select).alias("_max_val"))
+        return (
+            df.crossJoin(F.broadcast(max_df))
+            .where(F.col(col_to_select) == F.col("_max_val"))
+            .drop("_max_val")
+        )
+
+
     window = WF.Window.partitionBy(*pk_cols).orderBy(F.col(col_to_select).desc())
 
     ndf = (
@@ -1547,17 +1557,15 @@ def add_last_mission_col_to_profile_df(profile_df, profile_positions_df):
 
 
 
-
+import pandas as pd
 
 def dim_organization_extra_columns(sparkSession, dim_org_df):
 
-    slf = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_name_family"),
-        header=True,
-        inferSchema=True)
+    slf = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_name_family"))
     
     expr = None
-    for row in slf.select("ServiceLineName_contains", "Family").collect():
+    for _, row in slf[["ServiceLineName_contains", "Family"]].iterrows():
         if expr is None:
             expr = F.when(F.col("service_line_name").contains(row["ServiceLineName_contains"]), row["Family"])
         else:
@@ -1568,14 +1576,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr
     )
     
-    slm = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_zone_manager"),
-        header=True,
-        inferSchema=True
+    slm = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_zone_manager")
     )
 
     expr2 = None
-    for row in slm.select("Zone", "Family", "Manager").collect():
+    for _, row in slm[["Zone", "Family", "Manager"]].iterrows():
         if expr2 is None:
             expr2 = F.when(
                 (
@@ -1597,14 +1603,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
     )
 
 
-    zpr = spark.read.csv(
-        get_conf(sparkSession, "file.encode.zone_practice_region"),
-        header=True,
-        inferSchema=True
+    zpr = pd.read_csv(
+        get_conf(sparkSession, "file.encode.zone_practice_region")
     )
 
     expr3 = None
-    for row in zpr.select("Zone", "service_line_contains", "Region").collect():
+    for _, row in zpr[["Zone", "service_line_contains", "Region"]].iterrows():
         if row["service_line_contains"] is not None:
             constraint = (
                 (F.col("zone_name") == row["Zone"])
@@ -1624,14 +1628,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr3
     )
 
-    rpm = spark.read.csv(
-        get_conf(sparkSession, "file.encode.region_practice_manager"),
-        header=True,
-        inferSchema=True
+    rpm = pd.read_csv(
+        get_conf(sparkSession, "file.encode.region_practice_manager")
     )
 
     expr4 = None
-    for row in rpm.select("Region", "Practice_contains", "PracticeManager").collect():
+    for _, row in rpm[["Region", "Practice_contains", "PracticeManager"]].iterrows():
         if expr4 is None:
             expr4 = F.when(
                 (
@@ -1654,14 +1656,12 @@ def dim_organization_extra_columns(sparkSession, dim_org_df):
         expr4
     )
 
-    slnv2 = spark.read.csv(
-        get_conf(sparkSession, "file.encode.service_line_name_v2"),
-        header=True,
-        inferSchema=True
+    slnv2 = pd.read_csv(
+        get_conf(sparkSession, "file.encode.service_line_name_v2")
     )
 
     expr5 = F.when(F.col("service_line_name").isNull(), "Other / no service line")
-    for row in slnv2.select("service_line_name_contains", "service_line_v2").collect():
+    for _, row in slnv2[["service_line_name_contains", "service_line_v2"]].iterrows():
         expr5 = expr5.when(
             F.col("service_line_name").contains(row["service_line_name_contains"]), 
             row["service_line_v2"]
@@ -1792,6 +1792,7 @@ import pyspark.sql.functions as F
 from pathlib import Path
 import pyspark.sql.types as ty
 # import common.utils as ut
+# import common.constants as c
 
 
 class RawReader(): # Hardcoded everywhere cause imports dont work
@@ -1897,12 +1898,50 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
         df = (
             df
             .withColumn("resultado", get_date(F.col("_source_file_name")))
-            .withColumn("snapshot_ts", F.to_date("resultado.date", "yyyy-MM-dd"))
+            .withColumn(SNAPSHOT_COL, F.to_date("resultado.date", "yyyy-MM-dd"))
             .withColumn("file_name_error", F.col("resultado.file_name_error"))
             .withColumn("ingest_ts", F.current_timestamp())
             .drop("resultado")
         )
 
+
+        return df
+
+    @staticmethod
+    def raw_csv_reader(sparkSession,
+                       volume_path: str,
+                       glob_regex: str,
+                       streaming: bool = True):
+
+        schema_path = get_conf(sparkSession, "file.managed.inferred_schema_csv_location")
+
+        if streaming:
+            reader = (
+                sparkSession.readStream
+                    .format("cloudFiles")
+                    .option("cloudFiles.format", "csv")
+                    .option("cloudFiles.schemaLocation", schema_path)
+                    .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+            )
+            # No need to give spark permission to infer schema because,
+            # we store the data as payload and we do it manually since spark's is not enough
+        else:
+            reader = sparkSession.read.format("csv")
+
+        df = (
+            reader
+            .option("header", "true")
+            .option("multiLine", "true")
+            .option("pathGlobFilter", glob_regex)
+            .load(str(volume_path))
+            .select(
+                "*",
+                F.col("_metadata.file_path").alias("_source_file"),
+                F.col("_metadata.file_name").alias("_source_file_name"),
+                F.col("_metadata.file_size").alias("_source_file_size"),
+                F.col("_metadata.file_modification_time").alias("_source_file_modified_at")
+            )
+        )
 
         return df
 
@@ -2408,7 +2447,7 @@ from pathlib import Path
 def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
     
     def f():
-        df = sparkSession.readStream.table(read_path)
+        df = sparkSession.read.table(read_path)
         return middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 
@@ -2808,7 +2847,7 @@ def worker_process_2(worker, collab_status, leave):
 
     return ndf
 
-def worker_process_pipe_maker_2(sparkSession, catalog, enable_quarantine=False):
+def worker_process_pipe_maker_bad(sparkSession, catalog, enable_quarantine=False):
 
     platform_whoz = get_platform(sparkSession, "whoz")
     platform_perso = get_platform(sparkSession, "perso")
@@ -3240,6 +3279,52 @@ def make_date_range():
     )
     return df
 
+def make_seconds_in_day_range():
+
+    n_seconds = 24*60*60
+
+    seconds = (
+        spark.range(n_seconds)
+        .select(F.col("id").alias("sec_of_day"))
+        .withColumn("hour", F.floor(F.col("sec_of_day") / 3600).cast("int"))
+        .withColumn("minute", F.floor((F.col("sec_of_day") % 3600) / 60).cast("int"))
+        .withColumn("second", (F.col("sec_of_day") % 60).cast("int"))
+        .withColumn(
+            "time",
+            F.concat_ws(
+                ":",
+                F.lpad(F.col("hour").cast("string"), 2, "0"),
+                F.lpad(F.col("minute").cast("string"), 2, "0"),
+                F.lpad(F.col("second").cast("string"), 2, "0"),
+            ),
+        )
+    )
+
+    seconds = (
+        seconds
+        .withColumn(
+            "am_pm",
+            F.when(F.col("hour") < 12, F.lit("AM")).otherwise(F.lit("PM"))
+        )
+        .withColumn(
+            "hour_12",
+            F.when(F.col("hour") % 12 == 0, F.lit(12))
+            .otherwise(F.col("hour") % 12)
+            .cast("int")
+        )
+        .withColumn(
+            "time_12",
+            F.concat_ws(
+                ":",
+                F.lpad(F.col("hour_12").cast("string"), 2, "0"),
+                F.lpad(F.col("minute").cast("string"), 2, "0"),
+                F.lpad(F.col("second").cast("string"), 2, "0"),
+            ),
+        )
+    )
+
+    return seconds
+
 # ------------------------------------------------------------
 # Nombres de días y meses en español
 # ------------------------------------------------------------
@@ -3373,9 +3458,20 @@ def make_dim_date_pipe_maker(catalog):
     def f():
         return make_calendar_df()
 
+    TABLE_NAME_HOUR = f"{catalog}.gold_date.dim_hour"
+
+    @dp.table(
+        name= TABLE_NAME_HOUR,
+        comment="Dimension Hour. Adds the daily time metadata.",
+        table_properties={
+            "quality": "gold"
+        }
+    )
+    def f2():
+        return make_seconds_in_day_range()
+
     return None
 
-#print(f"Tabla '{TABLE_NAME}' creada correctamente.")
 
 
 # all_tables_bronze_silver.py

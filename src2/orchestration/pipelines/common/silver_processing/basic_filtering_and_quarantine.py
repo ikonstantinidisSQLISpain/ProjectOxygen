@@ -14,7 +14,7 @@ from pathlib import Path
 def mid_table_factory(sparkSession, read_path, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path):
     
     def f():
-        df = sparkSession.readStream.table(read_path)
+        df = sparkSession.read.table(read_path)
         return ut.middle_table_extractor(sparkSession, df, pks, col_to_extract, new_pk_names, extracted_col_name, variant_path)
     return f
 

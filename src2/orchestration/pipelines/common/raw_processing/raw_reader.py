@@ -5,6 +5,7 @@ import pyspark.sql.functions as F
 from pathlib import Path
 import pyspark.sql.types as ty
 import common.utils as ut
+import common.constants as c
 
 
 class RawReader(): # Hardcoded everywhere cause imports dont work
@@ -110,12 +111,50 @@ class RawReader(): # Hardcoded everywhere cause imports dont work
         df = (
             df
             .withColumn("resultado", get_date(F.col("_source_file_name")))
-            .withColumn("snapshot_ts", F.to_date("resultado.date", "yyyy-MM-dd"))
+            .withColumn(c.SNAPSHOT_COL, F.to_date("resultado.date", "yyyy-MM-dd"))
             .withColumn("file_name_error", F.col("resultado.file_name_error"))
             .withColumn("ingest_ts", F.current_timestamp())
             .drop("resultado")
         )
 
+
+        return df
+
+    @staticmethod
+    def raw_csv_reader(sparkSession,
+                       volume_path: str,
+                       glob_regex: str,
+                       streaming: bool = True):
+
+        schema_path = ut.get_conf(sparkSession, "file.managed.inferred_schema_csv_location")
+
+        if streaming:
+            reader = (
+                sparkSession.readStream
+                    .format("cloudFiles")
+                    .option("cloudFiles.format", "csv")
+                    .option("cloudFiles.schemaLocation", schema_path)
+                    .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+            )
+            # No need to give spark permission to infer schema because,
+            # we store the data as payload and we do it manually since spark's is not enough
+        else:
+            reader = sparkSession.read.format("csv")
+
+        df = (
+            reader
+            .option("header", "true")
+            .option("multiLine", "true")
+            .option("pathGlobFilter", glob_regex)
+            .load(str(volume_path))
+            .select(
+                "*",
+                F.col("_metadata.file_path").alias("_source_file"),
+                F.col("_metadata.file_name").alias("_source_file_name"),
+                F.col("_metadata.file_size").alias("_source_file_size"),
+                F.col("_metadata.file_modification_time").alias("_source_file_modified_at")
+            )
+        )
 
         return df
 

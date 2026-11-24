@@ -312,7 +312,7 @@ createdDate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
 customFields:
   description: An instantiation of custom fields for the given entity.
   type: list[dict]
@@ -364,7 +364,7 @@ lastExplicitUpdate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
   notes:
     - Does not appear in the API.
 lastExplicitUpdateBy:
@@ -404,7 +404,7 @@ lastModifiedDate:
         minute: "%S"
         seconds: "%S"
         microseconds: "%f"
-        timezone: "Z
+        timezone: "Z"
 links:
   description: URLs to external resources, such as LinkedIn or social media, describing the profile. Displays in the Social networks field in the UI.
   type: list[str]
